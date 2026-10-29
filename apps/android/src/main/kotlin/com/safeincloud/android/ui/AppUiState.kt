@@ -1,0 +1,80 @@
+package com.safeincloud.android.ui
+
+import com.safeincloud.android.data.AppSettings
+import com.safeincloud.core.model.FieldType
+import com.safeincloud.core.model.Vault
+import com.safeincloud.core.model.VaultItem
+import com.safeincloud.core.model.VaultMeta
+import com.safeincloud.core.security.SecurityReport
+import com.safeincloud.core.storage.BackupInfo
+import com.safeincloud.core.sync.WebDavConfig
+
+data class AppUiState(
+    val initialized: Boolean = false,
+    val vaults: List<VaultMeta> = emptyList(),
+    val activeVault: Vault? = null,
+    val activeMeta: VaultMeta? = null,
+    val unlocked: Boolean = false,
+    val screen: Screen = Screen.Unlock,
+    val backStack: List<Screen> = emptyList(),
+    val originTab: Screen = Screen.Vault,
+    val busy: Boolean = false,
+    val message: String? = null,
+    val error: String? = null,
+    val search: String = "",
+    val sortMode: SortMode = SortMode.TITLE,
+    val filterLabelId: String? = null,
+    val onlyFavorites: Boolean = false,
+    val security: SecurityReport = SecurityReport(),
+    val breached: Map<String, Int> = emptyMap(),
+    val settings: AppSettings = AppSettings(),
+    val webDav: WebDavConfig = WebDavConfig(),
+    val syncStatus: String = "",
+    val syncStatusAt: Long = 0L,
+    val syncConflict: Boolean = false,
+    val backups: List<BackupInfo> = emptyList(),
+    val fingerprintAvailable: Boolean = false,
+    val biometricSaved: Boolean = false,
+    val dataVersion: Long = 0
+)
+
+fun visibleItems(state: AppUiState): List<VaultItem> {
+    val vault = state.activeVault ?: return emptyList()
+    val query = state.search.trim().lowercase()
+    var items = vault.items.filter {
+        it.status == com.safeincloud.core.model.ItemStatus.ACTIVE
+    }
+    val labelId = state.filterLabelId
+    if (!labelId.isNullOrBlank()) {
+        items = items.filter { labelId in it.labelIds }
+    }
+    if (state.onlyFavorites) {
+        items = items.filter { it.favorite }
+    }
+    if (query.isNotBlank()) {
+        items = items.filter { item ->
+            item.title.lowercase().contains(query) ||
+                item.subtitle.lowercase().contains(query) ||
+                item.url.lowercase().contains(query) ||
+                item.notes.lowercase().contains(query) ||
+                item.fields.any { field ->
+                    (state.settings.searchPasswords || field.type != FieldType.PASSWORD) &&
+                        field.value.lowercase().contains(query)
+                }
+        }
+    }
+    val sorted = when (state.sortMode) {
+        SortMode.TITLE -> items.sortedBy { it.title.lowercase() }
+        SortMode.UPDATED -> items.sortedByDescending { it.updatedAt }
+        SortMode.CREATED -> items.sortedByDescending { it.createdAt }
+        SortMode.SIZE -> items.sortedByDescending { item ->
+            item.fields.sumOf { it.value.length } + item.notes.length
+        }
+    }
+    return sorted.sortedByDescending { it.favorite }
+}
+
+fun trashedItems(state: AppUiState): List<VaultItem> =
+    state.activeVault?.items.orEmpty()
+        .filter { it.status == com.safeincloud.core.model.ItemStatus.TRASHED }
+        .sortedByDescending { it.deletedAt ?: it.updatedAt }

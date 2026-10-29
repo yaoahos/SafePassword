@@ -1,0 +1,92 @@
+# ---------------------------------------------------------------------------
+# SafePassword - Git 忽略规则
+# 目标：只提交源码与构建描述文件，排除构建产物、本机配置和签名材料。
+# ---------------------------------------------------------------------------
+
+# ---- 签名与密钥（绝不提交）----
+*.keystore
+*.jks
+!debug.keystore
+keystore.properties
+keystore/*.properties
+
+# ---- 本机配置 ----
+local.properties
+local.properties.bak
+
+# ---- Gradle / Kotlin 构建产物 ----
+.gradle/
+.kotlin/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+gradle/wrapper/gradle-wrapper.jar.lck
+.gradle-cache/
+build-cache/
+
+# ---- 发布产物（APK/AAB 只通过 GitHub Releases 分发）----
+dist/
+*.apk
+*.aab
+*.ap_
+*.apks
+*.idsig
+*.dm
+output-metadata.json
+
+# ---- Android / Native ----
+captures/
+.externalNativeBuild/
+.cxx/
+*.hprof
+*.hprof.*
+hs_err_pid*
+replay_pid*
+
+# ---- 测试与报告 ----
+**/test-results/
+**/reports/
+*.exec
+*.ec
+coverage/
+lint-results*.html
+lint-results*.xml
+
+# ---- IDE / 编辑器 ----
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+.fleet/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# ---- 操作系统噪声 ----
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ---- 日志与临时文件 ----
+*.log
+logs/
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.swp
+*~
+.tools/
+.cache/
+
+# ---- 敏感/个人数据 ----
+*.spv
+*.sicv
+.env
+.env.*
+secrets.properties
