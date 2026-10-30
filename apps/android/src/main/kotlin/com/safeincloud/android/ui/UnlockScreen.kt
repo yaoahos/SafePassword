@@ -59,6 +59,14 @@ fun UnlockScreen(viewModel: AppViewModel, state: AppUiState, activity: MainActiv
     var visible by remember { mutableStateOf(false) }
     var autoPrompted by remember(meta?.id) { mutableStateOf(false) }
 
+    fun startFingerprint() {
+        BiometricHelper.authenticate(
+            activity,
+            onSuccess = { viewModel.unlockWithFingerprint() },
+            onError = { message -> if (!message.contains("取消")) viewModel.showError(message) }
+        )
+    }
+
     // 锁定后优先弹出指纹；取消一次后仍可用下方按钮手动重试。
     LaunchedEffect(meta?.id, state.biometricSaved, state.settings.fingerprintEnabled) {
         if (!autoPrompted &&
@@ -67,13 +75,7 @@ fun UnlockScreen(viewModel: AppViewModel, state: AppUiState, activity: MainActiv
             state.fingerprintAvailable
         ) {
             autoPrompted = true
-            BiometricHelper.authenticate(
-                activity,
-                onSuccess = { viewModel.unlockWithFingerprint() },
-                onError = { message ->
-                    if (!message.contains("取消")) viewModel.showError(message)
-                }
-            )
+            startFingerprint()
         }
     }
 
@@ -153,15 +155,7 @@ fun UnlockScreen(viewModel: AppViewModel, state: AppUiState, activity: MainActiv
             Spacer(Modifier.height(16.dp))
             if (state.biometricSaved && state.settings.fingerprintEnabled) {
                 Button(
-                    onClick = {
-                        BiometricHelper.authenticate(
-                            activity,
-                            onSuccess = { viewModel.unlockWithFingerprint() },
-                            onError = { message ->
-                                if (!message.contains("取消")) viewModel.showError(message)
-                            }
-                        )
-                    },
+                    onClick = { startFingerprint() },
                     enabled = state.fingerprintAvailable,
                     modifier = Modifier.fillMaxWidth()
                 ) {

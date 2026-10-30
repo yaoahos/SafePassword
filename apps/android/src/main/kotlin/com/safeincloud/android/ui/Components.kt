@@ -399,7 +399,8 @@ fun SafeSidebar(
     onTrash: () -> Unit,
     onLabels: () -> Unit,
     onSettings: () -> Unit,
-    onLock: () -> Unit
+    onLock: () -> Unit,
+    onAppNameClick: () -> Unit = {}
 ) {
     val appName = stringResource(R.string.app_name)
     ModalDrawerSheet(
@@ -480,7 +481,12 @@ fun SafeSidebar(
             Text(
                 "$appName ${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onAppNameClick)
+                    .padding(vertical = 8.dp)
             )
         }
     }

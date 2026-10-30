@@ -159,11 +159,13 @@ object SafeInCloudXml {
             label.contains("用户名") || label.contains("账号") || label.contains("帐号") ||
                 label.contains("登录") -> "login"
             label.contains("邮箱") || field.type == FieldType.EMAIL -> "email"
+            label.contains("秘密") -> "secret"
             label.contains("电话") || field.type == FieldType.PHONE -> "phone"
             label.contains("网址") || label.contains("url") || label.contains("website") ||
                 field.type == FieldType.URL -> "website"
             else -> when (field.type) {
                 FieldType.PASSWORD -> "password"
+                FieldType.SECRET -> "secret"
                 FieldType.EMAIL -> "email"
                 FieldType.PHONE -> "phone"
                 FieldType.URL -> "website"
@@ -201,7 +203,7 @@ object SafeInCloudXml {
                     label = label,
                     value = value,
                     type = fieldType,
-                    sensitive = fieldType == FieldType.PASSWORD
+                    sensitive = fieldType == FieldType.PASSWORD || fieldType == FieldType.SECRET
                 )
             )
         }
@@ -256,7 +258,8 @@ object SafeInCloudXml {
     }
 
     private fun safeType(type: String, rawName: String): FieldType = when (type) {
-        "password", "secret", "cvv", "pin" -> FieldType.PASSWORD
+        "password", "cvv", "pin" -> FieldType.PASSWORD
+        "secret" -> FieldType.SECRET
         "url", "website" -> FieldType.URL
         "email", "e-mail" -> FieldType.EMAIL
         "phone", "tel" -> FieldType.PHONE
@@ -285,6 +288,7 @@ object SafeInCloudXml {
                 else -> rawName
             }
             "password" -> if (generic("password", "pass", "pwd", "密码")) "密码" else rawName
+            "secret" -> if (generic("secret", "秘密")) "秘密" else rawName
             "url", "website" -> if (generic("website", "url", "web site", "网址")) "网址" else rawName
             "email", "e-mail" -> "邮箱"
             "phone", "tel" -> if (generic("phone", "tel", "telephone", "电话")) "电话" else rawName

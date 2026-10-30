@@ -205,7 +205,7 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
                 )
                 SettingRow(
                     title = "立即同步",
-                    subtitle = state.syncStatus.ifBlank { "手动上传 / 合并远端更新" },
+                    subtitle = "上次同步：${formatDate(state.activeMeta?.lastSyncedAt ?: 0)}",
                     onClick = { viewModel.syncNow() }
                 )
             }

@@ -147,6 +147,10 @@ fun ToolsScreen(viewModel: AppViewModel, state: AppUiState) {
                 onLock = {
                     scope.launch { drawerState.close() }
                     viewModel.lock()
+                },
+                onAppNameClick = {
+                    scope.launch { drawerState.close() }
+                    viewModel.checkForUpdates()
                 }
             )
         }

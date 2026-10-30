@@ -18,6 +18,8 @@ enum class ItemStatus {
 enum class FieldType {
     TEXT,
     PASSWORD,
+    /** 与密码一样加密、掩码显示，但不参与弱密码/重复/泄露等安全检查。 */
+    SECRET,
     URL,
     EMAIL,
     PHONE,
@@ -30,7 +32,7 @@ data class Field(
     var label: String,
     var value: String = "",
     var type: FieldType = FieldType.TEXT,
-    var sensitive: Boolean = type == FieldType.PASSWORD
+    var sensitive: Boolean = type == FieldType.PASSWORD || type == FieldType.SECRET
 )
 
 @Serializable

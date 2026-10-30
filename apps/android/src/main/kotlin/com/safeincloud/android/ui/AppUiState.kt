@@ -1,6 +1,8 @@
 package com.safeincloud.android.ui
 
 import com.safeincloud.android.data.AppSettings
+import com.safeincloud.android.update.ReleaseNote
+import com.safeincloud.android.update.UpdateInfo
 import com.safeincloud.core.model.FieldType
 import com.safeincloud.core.model.Vault
 import com.safeincloud.core.model.VaultItem
@@ -18,6 +20,8 @@ data class AppUiState(
     val screen: Screen = Screen.Unlock,
     val backStack: List<Screen> = emptyList(),
     val originTab: Screen = Screen.Vault,
+    /** 最近一次页面切换的方向：true 为进入下一层，false 为返回上一层或切换标签页。 */
+    val navForward: Boolean = true,
     val busy: Boolean = false,
     val message: String? = null,
     val error: String? = null,
@@ -35,7 +39,18 @@ data class AppUiState(
     val backups: List<BackupInfo> = emptyList(),
     val fingerprintAvailable: Boolean = false,
     val biometricSaved: Boolean = false,
-    val dataVersion: Long = 0
+    val dataVersion: Long = 0,
+    // ---- 检查更新 / 自更新 ----
+    val updateChecking: Boolean = false,
+    val updateInfo: UpdateInfo? = null,
+    val updateDialogVisible: Boolean = false,
+    val updateDownloading: Boolean = false,
+    /** -1 表示没有进行中的下载；0..100 为下载进度。 */
+    val updateProgress: Int = -1,
+    /** 已下载完成的安装包路径；非空时提示安装。 */
+    val updateReadyFile: String? = null,
+    val changelog: List<ReleaseNote> = emptyList(),
+    val showChangelog: Boolean = false
 )
 
 fun visibleItems(state: AppUiState): List<VaultItem> {
@@ -58,7 +73,8 @@ fun visibleItems(state: AppUiState): List<VaultItem> {
                 item.url.lowercase().contains(query) ||
                 item.notes.lowercase().contains(query) ||
                 item.fields.any { field ->
-                    (state.settings.searchPasswords || field.type != FieldType.PASSWORD) &&
+                    (state.settings.searchPasswords ||
+                        (field.type != FieldType.PASSWORD && field.type != FieldType.SECRET)) &&
                         field.value.lowercase().contains(query)
                 }
         }
