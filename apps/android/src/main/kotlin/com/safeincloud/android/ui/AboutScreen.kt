@@ -94,7 +94,6 @@ fun AboutScreen(viewModel: AppViewModel, state: AppUiState) {
                 Text("Kotlin/JVM core 模块：加密、数据库、同步、导入导出")
                 Text("Ktor Client + OkHttp（WebDAV 与 HIBP）")
                 Text("AES-256-GCM + PBKDF2-HMAC-SHA256")
-                Text("未来 Windows 客户端可直接复用 core 模块，UI 用 Compose Desktop")
             }
 
             SectionCard(title = "开源致谢") {
