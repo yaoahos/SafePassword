@@ -28,6 +28,7 @@ SafePassword 面向希望把密码数据掌握在自己手里的用户。它不�
 3. **可审计**：核心加密与同步逻辑位于独立的纯 Kotlin 模块，便于测试和复用。
 4. **克制**：不申请无关权限，不接入统计 SDK，不做后台常驻。
 5. **跨尺寸可用**：手机、平板和横屏共用一套 Compose UI。
+6. **跨平台**：Android 与 Windows 桌面共用同一套 `core` 加密与同步逻辑，数据完全互通。
 
 ---
 
@@ -193,9 +194,9 @@ SafePassword 面向希望把密码数据掌握在自己手里的用户。它不�
 ### 1. 环境要求
 
 - JDK 17 或更高（本项目使用 JDK 21 构建）。
-- Android SDK Platform 35、Build-Tools 35.0.0。
+- Android SDK Platform 35、Build-Tools 35.0.0（仅构建 Android 版需要）。
 - Gradle 使用项目自带的 Wrapper（8.11.1），无需单独安装。
-- Windows、macOS、Linux 均可构建。
+- Windows、macOS、Linux 均可构建；Windows 桌面打包（Msi/Exe）需在 Windows 上执行。
 
 ### 2. 配置 SDK 路径
 
@@ -218,6 +219,18 @@ gradlew.bat :core:test :apps:android:assembleDebug
 ```text
 apps/android/build/outputs/apk/debug/android-debug.apk
 ```
+
+### 3.1 Windows 桌面版运行与打包
+
+```bat
+gradlew.bat :apps:desktop:run                  直接运行（开发调试）
+gradlew.bat :apps:desktop:createDistributable  产出免安装目录（自带 JRE）
+gradlew.bat :apps:desktop:packageMsi           产出 MSI 安装包
+```
+
+`createDistributable` 产物位于 `apps/desktop/build/compose/binaries/main/app/SafePassword/`，双击其中的 `SafePassword.exe` 即可运行，无需安装 JRE。注意打包配置里 `description` 需保持纯 ASCII（jpackage 对非 ASCII 参数会报 `MalformedInputException`），并已在 `nativeDistributions` 中显式声明 `modules("java.net.http")`（ktor JDK 引擎依赖该模块，默认 jlink 镜像不含）。
+
+数据目录：`%APPDATA%\SafePassword`（不可写时自动降级到 `~/.safeincloud` 等候选目录）。
 
 ### 4. 正式构建
 
@@ -424,7 +437,7 @@ set JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=C:/path/to/tmp -Duser.home=C:/path/to/and
 
 ## 七、项目结构
 
-项目采用“平台应用 + 共享核心”的结构。Android 已经是可构建模块，Windows 桌面端预留 `apps/desktop`，后续复用 `core` 的加密、模型、导入导出和 WebDAV 能力。
+项目采用"平台应用 + 共享核心"的结构。`core` 是纯 Kotlin/JVM 共享核心，Android 与 Windows 桌面两端都直接复用它的加密、模型、导入导出和 WebDAV 能力，只在 UI 与平台粘合层上各自实现。
 
 ```text
 SafePassword/
@@ -436,8 +449,11 @@ SafePassword/
 │   │   │   ├── security/       生物识别
 │   │   │   └── MainActivity.kt
 │   │   └── src/main/res/       图标、字符串、主题资源
-│   └── desktop/                Windows 桌面端预留目录（当前为设计占位）
-│       └── README.md           桌面端模块规划
+│   └── desktop/                Windows 桌面端（Compose Desktop、Material3、三栏界面）
+│       └── src/main/kotlin/com/safeincloud/desktop/
+│           ├── ui/             导航/列表/详情三栏、面板、编辑器、主题
+│           ├── data/           数据目录、设置持久化
+│           └── AppViewModel.kt 状态管理、同步、备份、检查更新
 ├── core/                       纯 Kotlin/JVM 共享核心
 │   └── src/main/kotlin/com/safeincloud/core/
 │       ├── crypto/             AES-GCM、PBKDF2、密钥包裹
@@ -458,26 +474,36 @@ Gradle 模块路径：
 
 - `:core`：共享核心
 - `:apps:android`：Android 客户端
-- `:apps:desktop`：Windows 桌面端（预留，暂未加入构建）
+- `:apps:desktop`：Windows 桌面端（Compose Desktop）
 
 包名说明：
 
 - Android `applicationId`：`com.safeincloud`
 - Android 命名空间：`com.safeincloud.android`
 - 核心库包名：`com.safeincloud.core`
-- 桌面端规划包名：`com.safeincloud.desktop`
+- 桌面端包名：`com.safeincloud.desktop`
 
-### Windows 版本准备
+### Windows 桌面端
 
-当前已经完成以下边界划分：
+Windows 桌面端已实现（`:apps:desktop`），基于 Compose Desktop 1.7.3 + Material3，界面参考原版 SafeInCloud 的三栏布局：左侧导航（密码库/标签/安全中心/工具/同步/设置/关于）+ 中间条目列表 + 右侧详情/编辑。
 
-1. `core` 不依赖 Android API，桌面端可直接依赖。
-2. 加密格式、密码库模型、WebDAV 同步、CSV/JSON/XML 导入导出都在 `core`。
-3. Android UI 的 `data/`、`security/` 只保留平台能力（文件选择器、生物识别、系统设置跳转）。
-4. 桌面端建议使用 Kotlin/JVM + Compose Desktop，复用同一套 `core`；入口模块计划为 `apps/desktop`。
-5. 桌面端实现时，在 `settings.gradle.kts` 增加 `include(":apps:desktop")`，并复用现有 release keystore 或单独的 Windows 签名配置。
+与 Android 版共用同一套 `core`，功能保持一致：密码库创建/恢复/解锁、条目/标签/字段/搜索/收藏/归档/回收站、WebDAV 同步与冲突合并、CSV/JSON/SafeInCloud XML 导入导出、密码生成器、安全检查、HIBP 泄露检测、自动备份、GitHub 检查更新与内置更新日志。
 
-这样后续开发 Windows 版时，不需要复制密码学、同步或导入导出逻辑，也不需要改动 Android 模块的包名。
+边界划分：
+
+1. `core` 不依赖 Android API，两端直接依赖，加密格式、密码库模型、WebDAV 同步、导入导出全部共享。
+2. 平台能力各自实现：Android 用文件选择器/生物识别/通知栏，桌面用 AWT 剪贴板/jpackage 打包/JDK HttpClient 引擎。
+3. 数据目录：Android 用应用私有目录，桌面用 `%APPDATA%\SafePassword`（不可写时自动降级到 `~/.safeincloud` 等候选目录）。
+4. 加密容器格式完全一致（`.sicv`），两端可通过 WebDAV 同步共享同一个密码库。
+
+构建与打包（详见「五、项目构建」）：
+
+```bat
+gradlew :apps:desktop:run
+gradlew :apps:desktop:createDistributable
+```
+
+`createDistributable` 产出免安装目录（自带 JRE，双击 `SafePassword.exe` 即可运行）；`packageMsi` / `packageExe` 产出安装包。
 
 ---
 
