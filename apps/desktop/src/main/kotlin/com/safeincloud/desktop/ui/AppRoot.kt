@@ -31,10 +31,9 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -42,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -101,11 +101,11 @@ private val sectionSpecs = listOf(
 
 @Composable
 private fun Sidebar(state: com.safeincloud.desktop.DesktopUiState, viewModel: AppViewModel) {
-    NavigationRail(modifier = Modifier.width(180.dp).fillMaxHeight()) {
-        Column(
-            modifier = Modifier.padding(top = 16.dp, bottom = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+    val labels = state.vault?.labels.orEmpty().sortedBy { it.sortOrder }
+    Column(
+        Modifier.width(200.dp).fillMaxHeight().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+    ) {
+        Column(Modifier.padding(top = 16.dp, bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 "SafePassword",
                 style = MaterialTheme.typography.titleSmall,
@@ -122,22 +122,43 @@ private fun Sidebar(state: com.safeincloud.desktop.DesktopUiState, viewModel: Ap
                 )
             }
         }
-        sectionSpecs.forEach { spec ->
-            NavigationRailItem(
-                selected = state.section == spec.section,
-                onClick = { viewModel.selectSection(spec.section) },
-                icon = { Icon(spec.icon, contentDescription = spec.label) },
-                label = { Text(spec.label) },
-                alwaysShowLabel = false
-            )
+
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            sectionSpecs.forEach { spec ->
+                SidebarRow(
+                    selected = state.section == spec.section && state.filterLabelId == null,
+                    onClick = { viewModel.selectSection(spec.section); viewModel.filterByLabel(null) },
+                    label = spec.label,
+                    icon = { Icon(spec.icon, contentDescription = spec.label, modifier = Modifier.size(18.dp)) }
+                )
+            }
+
+            if (labels.isNotEmpty()) {
+                HorizontalDivider(Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                Text(
+                    "标签",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
+                )
+                labels.forEach { label ->
+                    SidebarRow(
+                        selected = state.filterLabelId == label.id,
+                        onClick = { viewModel.filterByLabel(label.id) },
+                        label = label.name,
+                        dotColor = Color(label.color)
+                    )
+                }
+            }
         }
-        Spacer(Modifier.weight(1f))
-        NavigationRailItem(
+
+        SidebarRow(
             selected = false,
             onClick = { viewModel.lock() },
+            label = "锁定",
             icon = {
                 Box(
-                    Modifier.size(28.dp).clip(CircleShape)
+                    Modifier.size(20.dp).clip(CircleShape)
                         .background(MaterialTheme.colorScheme.error.copy(alpha = 0.12f)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -145,13 +166,45 @@ private fun Sidebar(state: com.safeincloud.desktop.DesktopUiState, viewModel: Ap
                         Icons.Outlined.Lock,
                         contentDescription = "锁定",
                         tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(13.dp)
                     )
                 }
-            },
-            label = { Text("锁定") },
-            alwaysShowLabel = false
+            }
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun SidebarRow(
+    selected: Boolean,
+    onClick: () -> Unit,
+    label: String,
+    icon: (@Composable () -> Unit)? = null,
+    dotColor: Color? = null
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 1.dp)
+            .clip(MaterialTheme.shapes.small)
+            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (icon != null) {
+            icon()
+            Spacer(Modifier.width(10.dp))
+        } else if (dotColor != null) {
+            Box(Modifier.size(10.dp).clip(CircleShape).background(dotColor))
+            Spacer(Modifier.width(10.dp))
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
