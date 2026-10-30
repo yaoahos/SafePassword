@@ -1,6 +1,7 @@
 package com.safeincloud.core.storage
 
 import com.safeincloud.core.crypto.Crypto
+import com.safeincloud.core.io.AtomicFiles
 import com.safeincloud.core.model.AttachmentRef
 import com.safeincloud.core.model.newId
 import java.io.ByteArrayOutputStream
@@ -58,14 +59,7 @@ class AttachmentStore(
     }
 
     private fun writeAtomic(path: Path, bytes: ByteArray) {
-        Files.createDirectories(path.parent)
-        val tmp = path.resolveSibling(path.fileName.toString() + ".tmp")
-        Files.write(tmp, bytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-        try {
-            Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-        } catch (_: Exception) {
-            Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING)
-        }
+        AtomicFiles.writeAtomic(path, bytes)
     }
 
     private fun readLimited(input: InputStream, maxBytes: Long): ByteArray {

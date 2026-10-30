@@ -1,6 +1,7 @@
 package com.safeincloud.core.crypto
 
 import com.safeincloud.core.json.AppJson
+import com.safeincloud.core.io.AtomicFiles
 import com.safeincloud.core.model.Vault
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -63,15 +64,7 @@ class VaultContainer private constructor(
     }
 
     fun saveTo(path: Path) {
-        val parent = path.parent
-        if (parent != null) Files.createDirectories(parent)
-        val tmp = path.resolveSibling(path.fileName.toString() + ".tmp")
-        Files.write(tmp, toBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-        try {
-            Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-        } catch (_: Exception) {
-            Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING)
-        }
+        AtomicFiles.writeAtomic(path, toBytes())
     }
 
     fun changePassword(newPassword: CharArray): VaultContainer {
