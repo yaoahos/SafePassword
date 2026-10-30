@@ -477,12 +477,14 @@ private fun FieldRow(
     onOpenUrl: (String) -> Unit
 ) {
     val isPassword = field.type == FieldType.PASSWORD
+    val isSecret = field.type == FieldType.SECRET
+    val masked = isPassword || isSecret
     val isUrl = field.type == FieldType.URL
     val value = field.value
     var revealed by remember(field.id) { mutableStateOf(false) }
     val display = when {
         value.isBlank() -> "—"
-        isPassword && !revealed -> "•".repeat(value.length.coerceIn(8, 16))
+        masked && !revealed -> "•".repeat(value.length.coerceIn(8, 16))
         else -> value
     }
     Column(
@@ -508,7 +510,7 @@ private fun FieldRow(
                     )
                 }
             }
-            if (isPassword) {
+            if (masked) {
                 IconButton(onClick = { revealed = !revealed }, modifier = Modifier.size(26.dp)) {
                     Icon(
                         if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
@@ -531,7 +533,7 @@ private fun FieldRow(
             display,
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
-            letterSpacing = if (isPassword && !revealed) 2.sp else 0.sp,
+            letterSpacing = if (masked && !revealed) 2.sp else 0.sp,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             color = if (value.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant

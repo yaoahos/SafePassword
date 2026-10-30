@@ -30,6 +30,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.safeincloud.core.sync.WebDavConfig
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +55,19 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
     var masterPassword by remember { mutableStateOf("") }
     var masterVisible by remember { mutableStateOf(false) }
     var masterError by remember { mutableStateOf(false) }
+
+    // 同步状态与首页一致：显示 3 秒后自动消失，只常驻“上次同步”时间。
+    var visibleSyncStatus by remember { mutableStateOf("") }
+    LaunchedEffect(state.syncStatus, state.syncStatusAt) {
+        val elapsed = System.currentTimeMillis() - state.syncStatusAt
+        if (state.syncStatus.isBlank() || elapsed >= 3000L) {
+            visibleSyncStatus = ""
+        } else {
+            visibleSyncStatus = state.syncStatus
+            delay(3000L - elapsed)
+            visibleSyncStatus = ""
+        }
+    }
 
     fun currentConfig() = WebDavConfig(
         baseUrl = baseUrl.trim(),
@@ -161,8 +176,12 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (state.syncStatus.isNotBlank()) {
-                    Text(state.syncStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                if (visibleSyncStatus.isNotBlank()) {
+                    Text(
+                        visibleSyncStatus,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
 

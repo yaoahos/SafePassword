@@ -8,14 +8,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -28,10 +33,11 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.safeincloud.android.BuildConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AboutScreen(viewModel: AppViewModel) {
+fun AboutScreen(viewModel: AppViewModel, state: AppUiState) {
     val uriHandler = LocalUriHandler.current
     Scaffold(
         topBar = {
@@ -63,7 +69,7 @@ fun AboutScreen(viewModel: AppViewModel) {
             )
             Text("SafePassword", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(
-                "版本 1.0.0",
+                "版本 ${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -133,6 +139,42 @@ fun AboutScreen(viewModel: AppViewModel) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            SectionCard(title = "更新") {
+                SettingRow(
+                    title = "检查更新",
+                    subtitle = when {
+                        state.updateChecking -> "正在检查…"
+                        state.updateDownloading -> "正在下载新版本：${state.updateProgress.coerceIn(0, 100)}%"
+                        state.updateInfo != null -> "发现新版本 v${state.updateInfo.version}"
+                        else -> "从 GitHub Releases 获取最新版本"
+                    },
+                    onClick = { viewModel.checkForUpdates() },
+                    trailing = {
+                        if (state.updateChecking) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Outlined.Refresh, contentDescription = null)
+                        }
+                    }
+                )
+                SettingRow(
+                    title = "更新日志",
+                    subtitle = "查看各版本的新增功能与修复",
+                    onClick = { viewModel.openChangelog() },
+                    trailing = { Icon(Icons.Outlined.History, contentDescription = null) }
+                )
+                if (state.updateDownloading) {
+                    Spacer(Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { state.updateProgress.coerceIn(0, 100) / 100f },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
 
             Spacer(Modifier.height(24.dp))

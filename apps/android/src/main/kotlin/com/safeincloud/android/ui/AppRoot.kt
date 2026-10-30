@@ -2,10 +2,10 @@ package com.safeincloud.android.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -44,9 +44,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.safeincloud.android.MainActivity
 import com.safeincloud.android.ui.theme.SafeInCloudTheme
+import com.safeincloud.android.update.ApkInstaller
 import com.safeincloud.core.sync.ConflictStrategy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
 
 @Composable
 fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
@@ -132,48 +134,43 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                                 AnimatedContent(
                                     targetState = state.screen,
                                     transitionSpec = {
-                                        val tabChange = targetState == Screen.Vault ||
-                                            targetState == Screen.Tools ||
-                                            targetState == Screen.Unlock
-                                        if (tabChange) {
-                                            (
-                                                fadeIn(tween(220, easing = FastOutSlowInEasing)) +
+                                        // 参考 Bitwarden / SafeInCloud 的层级切换：
+                                        // 标签页之间只做淡入淡出，进入下一层从右侧滑入，返回上一层反向滑出。
+                                        val tabChange = initialState.isTabScreen() && targetState.isTabScreen()
+                                        val transform = when {
+                                            tabChange -> (
+                                                fadeIn(tween(240, easing = FastOutSlowInEasing)) +
                                                     scaleIn(
-                                                        initialScale = 0.985f,
-                                                        animationSpec = tween(
-                                                            240,
-                                                            easing = FastOutSlowInEasing
-                                                        )
+                                                        initialScale = 0.98f,
+                                                        animationSpec = tween(260, easing = FastOutSlowInEasing)
                                                     )
+                                                ) togetherWith fadeOut(tween(160, easing = FastOutSlowInEasing))
+
+                                            state.navForward -> (
+                                                slideInHorizontally(
+                                                    animationSpec = tween(320, easing = FastOutSlowInEasing)
+                                                ) { it / 3 } +
+                                                    fadeIn(tween(240, delayMillis = 40))
                                                 ) togetherWith (
-                                                fadeOut(tween(140)) +
-                                                    scaleOut(
-                                                        targetScale = 0.995f,
-                                                        animationSpec = tween(
-                                                            180,
-                                                            easing = FastOutSlowInEasing
-                                                        )
-                                                    )
+                                                slideOutHorizontally(
+                                                    animationSpec = tween(320, easing = FastOutSlowInEasing)
+                                                ) { -it / 3 } +
+                                                    fadeOut(tween(150))
                                                 )
-                                        } else {
-                                            (
-                                                fadeIn(tween(220, easing = FastOutSlowInEasing)) +
-                                                    slideInHorizontally(
-                                                        animationSpec = tween(
-                                                            280,
-                                                            easing = FastOutSlowInEasing
-                                                        )
-                                                    ) { it / 14 }
+
+                                            else -> (
+                                                slideInHorizontally(
+                                                    animationSpec = tween(320, easing = FastOutSlowInEasing)
+                                                ) { -it / 3 } +
+                                                    fadeIn(tween(240, delayMillis = 40))
                                                 ) togetherWith (
-                                                fadeOut(tween(160)) +
-                                                    slideOutHorizontally(
-                                                        animationSpec = tween(
-                                                            220,
-                                                            easing = FastOutSlowInEasing
-                                                        )
-                                                    ) { -it / 24 }
+                                                slideOutHorizontally(
+                                                    animationSpec = tween(320, easing = FastOutSlowInEasing)
+                                                ) { it / 3 } +
+                                                    fadeOut(tween(150))
                                                 )
                                         }
+                                        transform.using(SizeTransform(clip = false))
                                     },
                                     label = "screen"
                                 ) { animated ->
@@ -192,7 +189,7 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                                             is Screen.LabelManager -> LabelManagerScreen(viewModel, state, screen.create)
                                             Screen.Trash -> TrashScreen(viewModel, state)
                                             Screen.Theme -> ThemeScreen(viewModel, state)
-                                            Screen.About -> AboutScreen(viewModel)
+                                            Screen.About -> AboutScreen(viewModel, state)
                                         }
                                     }
                                 }
@@ -212,6 +209,38 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                         confirmButton = {
                             TextButton(onClick = { viewModel.consumeError() }) { Text("知道了") }
                         }
+                    )
+                }
+
+                state.updateInfo?.let { info ->
+                    if (state.updateDialogVisible) {
+                        UpdateAvailableDialog(
+                            info = info,
+                            onDismiss = { viewModel.dismissUpdateDialog() },
+                            onUpdate = {
+                                activity.ensureNotificationPermission()
+                                viewModel.downloadUpdate()
+                            }
+                        )
+                    }
+                }
+
+                state.updateReadyFile?.let { path ->
+                    UpdateReadyDialog(
+                        version = state.updateInfo?.version.orEmpty(),
+                        onInstall = {
+                            viewModel.consumeUpdateReady()
+                            ApkInstaller.install(activity, File(path))
+                        },
+                        onDismiss = { viewModel.consumeUpdateReady() }
+                    )
+                }
+
+                if (state.showChangelog) {
+                    ChangelogDialog(
+                        notes = state.changelog,
+                        checking = state.updateChecking,
+                        onDismiss = { viewModel.dismissChangelog() }
                     )
                 }
 
@@ -249,3 +278,7 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
         }
     }
 }
+
+/** 底部标签页级别的页面：之间切换只做淡入淡出，不做层级滑动。 */
+private fun Screen.isTabScreen(): Boolean =
+    this == Screen.Vault || this == Screen.Tools || this == Screen.Unlock

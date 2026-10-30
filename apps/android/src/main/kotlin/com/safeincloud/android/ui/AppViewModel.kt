@@ -9,8 +9,12 @@ import android.util.Base64
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.safeincloud.android.SafeInCloudApplication
+import com.safeincloud.android.BuildConfig
 import com.safeincloud.android.data.AppSettings
 import com.safeincloud.android.security.BiometricHelper
+import com.safeincloud.android.update.GitHubUpdater
+import com.safeincloud.android.update.UpdateLog
+import com.safeincloud.android.update.UpdateNotifications
 import com.safeincloud.core.crypto.VaultContainer
 import com.safeincloud.core.crypto.WrongPasswordException
 import com.safeincloud.core.io.SafeInCloudCard
@@ -61,6 +65,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var attachmentStore: AttachmentStore? = null
     private var backgroundAt: Long = 0
     private var syncJob: Job? = null
+    private var updateJob: Job? = null
     private var failedAttempts = 0
     private var lockedUntil = 0L
 
@@ -306,7 +311,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun saveItem(
         item: VaultItem,
         navigateBack: Boolean = true,
-        returnScreen: Screen = Screen.Vault
+        returnScreen: Screen? = null
     ) {
         val session = active ?: return
         if (item.title.isBlank()) {
@@ -329,11 +334,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 recomputeSecurity()
                 _state.update {
                     if (navigateBack) {
-                        val stack = when (returnScreen) {
-                            Screen.Vault, Screen.Tools -> emptyList()
-                            else -> it.backStack.dropLastWhile { s -> s == returnScreen }
-                        }
-                        it.copy(screen = returnScreen, backStack = stack, message = "已保存")
+                        // 保存后回到进入编辑页之前的页面：显式指定优先，否则沿返回栈回退一格。
+                        val target = returnScreen ?: it.backStack.lastOrNull() ?: Screen.Vault
+                        val stack = it.backStack.dropLastWhile { s -> s == target }
+                        it.copy(screen = target, backStack = stack, navForward = false, message = "已保存")
                     } else {
                         it.copy(message = "已保存，可以继续添加")
                     }
@@ -714,11 +718,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             Screen.Vault, Screen.Tools, Screen.Unlock -> state.copy(
                 screen = screen,
                 originTab = if (screen == Screen.Unlock) state.originTab else screen,
-                backStack = emptyList()
+                backStack = emptyList(),
+                navForward = false
             )
             else -> if (screen == state.screen) state else state.copy(
                 screen = screen,
-                backStack = (state.backStack + state.screen).takeLast(16)
+                backStack = (state.backStack + state.screen).takeLast(16),
+                navForward = true
             )
         }
     }
@@ -736,7 +742,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
             state.copy(
                 screen = target,
-                backStack = if (state.backStack.isNotEmpty()) state.backStack.dropLast(1) else emptyList()
+                backStack = if (state.backStack.isNotEmpty()) state.backStack.dropLast(1) else emptyList(),
+                navForward = false
             )
         }
     }
@@ -1304,6 +1311,108 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun strengthOf(password: String) = PasswordStrength.evaluate(password)
+
+    // ---------------------------------------------------------------- 检查更新
+
+    /** 查询 GitHub 上最新的正式发布；[showDialog] 为 true 且发现新版本时弹出更新对话框。 */
+    fun checkForUpdates(showDialog: Boolean = true) {
+        if (_state.value.updateChecking) return
+        _state.update { it.copy(updateChecking = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val releases = GitHubUpdater.fetchReleases()
+                val notes = GitHubUpdater.releaseNotes(releases, limit = 6)
+                val published = releases.filter { !it.draft && !it.prerelease && it.tagName.isNotBlank() }
+                val latest = published.firstOrNull { release ->
+                    release.assets.any { asset -> asset.name.endsWith(".apk", ignoreCase = true) }
+                } ?: published.firstOrNull()
+                val current = BuildConfig.VERSION_NAME
+                if (latest == null) {
+                    _state.update {
+                        it.copy(updateChecking = false, changelog = notes, message = "未找到可用的发布版本")
+                    }
+                    return@launch
+                }
+                val info = GitHubUpdater.toUpdateInfo(latest)
+                val newer = GitHubUpdater.isNewer(info.version, current) && info.apkUrl.isNotBlank()
+                _state.update {
+                    it.copy(
+                        updateChecking = false,
+                        changelog = notes,
+                        updateInfo = info.takeIf { newer },
+                        updateDialogVisible = newer && showDialog,
+                        message = if (newer) {
+                            "发现新版本 v${info.version}"
+                        } else {
+                            "当前已是最新版本 v$current"
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(updateChecking = false, message = "检查更新失败：${e.message ?: "网络异常"}")
+                }
+            }
+        }
+    }
+
+    fun dismissUpdateDialog() = _state.update { it.copy(updateDialogVisible = false) }
+
+    fun downloadUpdate() {
+        val info = _state.value.updateInfo ?: return
+        if (_state.value.updateDownloading) return
+        if (info.apkUrl.isBlank()) {
+            showMessage("该版本没有提供 APK 下载")
+            return
+        }
+        val app = getApplication<Application>()
+        _state.update { it.copy(updateDownloading = true, updateProgress = 0, updateDialogVisible = false) }
+        updateJob = viewModelScope.launch(Dispatchers.IO) {
+            val dir = File(app.cacheDir, "updates")
+            val target = File(dir, "SafePassword-${info.version}.apk")
+            try {
+                dir.mkdirs()
+                UpdateNotifications.ensureChannel(app)
+                UpdateNotifications.progress(app, -1)
+                GitHubUpdater.download(info.apkUrl, target) { percent ->
+                    _state.update { it.copy(updateProgress = percent) }
+                    UpdateNotifications.progress(app, percent)
+                }
+                UpdateNotifications.completed(app, info, target.absolutePath)
+                _state.update {
+                    it.copy(updateDownloading = false, updateProgress = 100, updateReadyFile = target.absolutePath)
+                }
+            } catch (e: Exception) {
+                UpdateNotifications.clear(app)
+                _state.update {
+                    it.copy(
+                        updateDownloading = false,
+                        updateProgress = -1,
+                        message = "下载失败：${e.message ?: "网络异常"}"
+                    )
+                }
+            }
+        }
+    }
+
+    fun cancelUpdateDownload() {
+        updateJob?.cancel()
+        updateJob = null
+        UpdateNotifications.clear(getApplication())
+        _state.update { it.copy(updateDownloading = false, updateProgress = -1) }
+    }
+
+    fun consumeUpdateReady() = _state.update { it.copy(updateReadyFile = null) }
+
+    fun openChangelog() {
+        // 更新日志随包内置，离线也能查看，内容只包含功能介绍与问题修复。
+        val local = UpdateLog.load(getApplication())
+        _state.update {
+            it.copy(changelog = local.ifEmpty { it.changelog }, showChangelog = true)
+        }
+    }
+
+    fun dismissChangelog() = _state.update { it.copy(showChangelog = false) }
 
     // ---------------------------------------------------------------- lifecycle
 

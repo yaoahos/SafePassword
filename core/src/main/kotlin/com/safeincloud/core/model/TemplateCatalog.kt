@@ -3,7 +3,7 @@ package com.safeincloud.core.model
 data class FieldDef(
     val label: String,
     val type: FieldType = FieldType.TEXT,
-    val sensitive: Boolean = type == FieldType.PASSWORD
+    val sensitive: Boolean = type == FieldType.PASSWORD || type == FieldType.SECRET
 )
 
 data class TemplateDef(

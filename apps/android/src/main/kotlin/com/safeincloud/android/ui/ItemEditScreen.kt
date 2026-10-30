@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Notes
 import androidx.compose.material.icons.outlined.OpenInFull
@@ -131,6 +132,7 @@ fun ItemEditScreen(
     var moreMenu by remember { mutableStateOf(false) }
     var showAddField by remember { mutableStateOf(false) }
     var showGenerator by remember { mutableStateOf(false) }
+    var generatorTarget by remember { mutableStateOf(-1) }
     var showDelete by remember { mutableStateOf(false) }
     var showLabel by remember { mutableStateOf(false) }
     var showNotesMeta by remember { mutableStateOf(false) }
@@ -153,7 +155,7 @@ fun ItemEditScreen(
         } else {
             viewModel.saveItem(
                 item,
-                returnScreen = if (returnToView) Screen.ViewItem(item.id) else Screen.Vault
+                returnScreen = if (returnToView) Screen.ViewItem(item.id) else null
             )
         }
     }
@@ -352,7 +354,10 @@ fun ItemEditScreen(
                                 }
                             )
                         },
-                        onGenerate = { showGenerator = true }
+                        onGenerate = {
+                            generatorTarget = index
+                            showGenerator = true
+                        }
                     )
                     fieldIndex++
                 }
@@ -457,7 +462,7 @@ fun ItemEditScreen(
             onDismiss = { showAddField = false },
             onConfirm = { label, type ->
                 item = item.copy(
-                    fields = (item.fields + Field(label = label, type = type, sensitive = type == FieldType.PASSWORD)).toMutableList()
+                    fields = (item.fields + Field(label = label, type = type, sensitive = type.masked)).toMutableList()
                 )
                 showAddField = false
             }
@@ -468,7 +473,9 @@ fun ItemEditScreen(
         GeneratorDialog(
             onDismiss = { showGenerator = false },
             onUse = { password ->
-                val index = item.fields.indexOfFirst { it.type == FieldType.PASSWORD }
+                val index = generatorTarget
+                    .takeIf { it in item.fields.indices }
+                    ?: item.fields.indexOfFirst { it.type.masked }
                 item = if (index >= 0) {
                     item.copy(
                         fields = item.fields.toMutableList().also {
@@ -480,6 +487,7 @@ fun ItemEditScreen(
                         fields = (item.fields + Field(label = "密码", type = FieldType.PASSWORD, value = password, sensitive = true)).toMutableList()
                     )
                 }
+                generatorTarget = -1
                 showGenerator = false
             }
         )
@@ -641,7 +649,7 @@ private fun EditorFieldBox(
             modifier = Modifier
                 .weight(1f)
                 .height(64.dp),
-            visualTransformation = if (field.type == FieldType.PASSWORD && !visible) {
+            visualTransformation = if (field.type.masked && !visible) {
                 PasswordVisualTransformation()
             } else {
                 VisualTransformation.None
@@ -652,7 +660,7 @@ private fun EditorFieldBox(
                 FieldType.URL -> KeyboardOptions(keyboardType = KeyboardType.Uri)
                 else -> KeyboardOptions.Default
             },
-            trailingIcon = if (field.type == FieldType.PASSWORD) {
+            trailingIcon = if (field.type.masked) {
                 {
                     IconButton(onClick = { visible = !visible }) {
                         Icon(
@@ -723,7 +731,7 @@ private fun EditorFieldBox(
                             }
                         )
                     }
-                    if (field.type == FieldType.PASSWORD) {
+                    if (field.type.masked) {
                         DropdownMenuItem(
                             text = { Text("生成密码") },
                             leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null) },
@@ -758,7 +766,7 @@ private fun EditorFieldBox(
                     field.copy(
                         label = label,
                         type = type,
-                        sensitive = type == FieldType.PASSWORD
+                        sensitive = type.masked
                     )
                 )
                 edit = false
@@ -769,12 +777,17 @@ private fun EditorFieldBox(
 
 private fun fieldTypeIcon(type: FieldType): ImageVector = when (type) {
     FieldType.PASSWORD -> Icons.Outlined.VpnKey
+    FieldType.SECRET -> Icons.Outlined.Lock
     FieldType.URL -> Icons.Outlined.Link
     FieldType.EMAIL -> Icons.Outlined.Email
     FieldType.PHONE -> Icons.Outlined.Phone
     FieldType.MULTILINE -> Icons.Outlined.Notes
     else -> Icons.Outlined.Person
 }
+
+/** 需要遮挡显示的字段类型：密码与秘密。 */
+private val FieldType.masked: Boolean
+    get() = this == FieldType.PASSWORD || this == FieldType.SECRET
 
 @Composable
 private fun FieldEditor(
@@ -792,7 +805,7 @@ private fun FieldEditor(
         singleLine = field.type != FieldType.MULTILINE,
         minLines = if (field.type == FieldType.MULTILINE) 3 else 1,
         modifier = Modifier.fillMaxWidth(),
-        visualTransformation = if (field.type == FieldType.PASSWORD && !visible) {
+        visualTransformation = if (field.type.masked && !visible) {
             PasswordVisualTransformation()
         } else {
             VisualTransformation.None
@@ -810,7 +823,7 @@ private fun FieldEditor(
                         Icon(Icons.Outlined.ContentCopy, contentDescription = "复制")
                     }
                 }
-                if (field.type == FieldType.PASSWORD) {
+                if (field.type.masked) {
                     IconButton(onClick = { visible = !visible }) {
                         Icon(
                             if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
@@ -861,7 +874,7 @@ private fun FieldDialog(
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         listOf(
-                            FieldType.TEXT, FieldType.PASSWORD, FieldType.URL,
+                            FieldType.TEXT, FieldType.PASSWORD, FieldType.SECRET, FieldType.URL,
                             FieldType.EMAIL, FieldType.PHONE, FieldType.MULTILINE
                         ).forEach { option ->
                             DropdownMenuItem(
@@ -888,6 +901,7 @@ private fun FieldDialog(
 private fun typeLabel(type: FieldType): String = when (type) {
     FieldType.TEXT -> "文本"
     FieldType.PASSWORD -> "密码"
+    FieldType.SECRET -> "秘密"
     FieldType.URL -> "网址"
     FieldType.EMAIL -> "邮箱"
     FieldType.PHONE -> "电话"
