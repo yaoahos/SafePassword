@@ -1,6 +1,7 @@
 package com.safeincloud.core.storage
 
 import com.safeincloud.core.crypto.VaultContainer
+import com.safeincloud.core.io.AtomicFiles
 import com.safeincloud.core.json.AppJson
 import com.safeincloud.core.model.Vault
 import com.safeincloud.core.model.VaultIndex
@@ -172,18 +173,10 @@ class VaultStore(private val root: Path) {
 
     private fun writeIndex(index: VaultIndex) {
         Files.createDirectories(vaultsDir)
-        val tmp = indexFile.resolveSibling("index.json.tmp")
-        Files.write(
-            tmp,
-            AppJson.instance.encodeToString(VaultIndex.serializer(), index).toByteArray(Charsets.UTF_8),
-            StandardOpenOption.CREATE,
-            StandardOpenOption.TRUNCATE_EXISTING
+        AtomicFiles.writeAtomic(
+            indexFile,
+            AppJson.instance.encodeToString(VaultIndex.serializer(), index).toByteArray(Charsets.UTF_8)
         )
-        try {
-            Files.move(tmp, indexFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-        } catch (_: Exception) {
-            Files.move(tmp, indexFile, StandardCopyOption.REPLACE_EXISTING)
-        }
     }
 
     private fun deleteRecursively(path: Path) {
