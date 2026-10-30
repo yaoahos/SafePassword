@@ -95,6 +95,16 @@ class AppViewModel {
 
     private var container: VaultContainer? = null
     private var password: CharArray? = null
+    private var attachmentStore: com.safeincloud.core.storage.AttachmentStore? = null
+
+    /** 附件存储需在解锁后按内容密钥建立，这里做一次缓存并复用。 */
+    private fun attachments(): com.safeincloud.core.storage.AttachmentStore? {
+        container?.let { c -> attachmentStore?.let { return it } }
+        val c = container ?: return null
+        val meta = _state.value.activeMeta ?: return null
+        return com.safeincloud.core.storage.AttachmentStore(vaultStore.attachmentsDir(meta.id), c.contentKey)
+            .also { attachmentStore = it }
+    }
 
     private val _state = MutableStateFlow(DesktopUiState())
     val state: StateFlow<DesktopUiState> = _state.asStateFlow()
@@ -168,6 +178,7 @@ class AppViewModel {
     fun lock() {
         persistNow(silent = true)
         container = null
+        attachmentStore = null
         password?.fill(' ')
         password = null
         _state.update {
@@ -203,6 +214,84 @@ class AppViewModel {
         if (_state.value.settings.autoSync && _state.value.settings.webDav.enabled) {
             syncNow()
         }
+    }
+
+    // ---------------------------------------------------------------- attachments
+
+    fun addAttachment(itemId: String, file: java.io.File) {
+        val store = attachments() ?: run { showError("请先解锁密码库"); return }
+        val item = _state.value.vault?.item(itemId) ?: return
+        scope.launch {
+            try {
+                val name = file.name.ifBlank { "附件" }
+                val mime = java.nio.file.Files.probeContentType(file.toPath())
+                    ?: guessMime(file.name.lowercase())
+                val ref = file.inputStream().use { store.add(it, name, mime) }
+                item.attachments.add(ref)
+                item.updatedAt = com.safeincloud.core.model.now()
+                _state.value.vault?.touch()
+                persist()
+                _state.update { it.copy(message = "已添加附件：$name") }
+            } catch (e: Exception) {
+                showError("添加附件失败：${e.message}")
+            }
+        }
+    }
+
+    fun openAttachment(ref: com.safeincloud.core.model.AttachmentRef) {
+        val store = attachments() ?: return
+        scope.launch {
+            try {
+                val bytes = store.read(ref)
+                val dir = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"), "SafePassword")
+                java.nio.file.Files.createDirectories(dir)
+                val out = dir.resolve(sanitizeFileName(ref.name))
+                java.nio.file.Files.write(out, bytes)
+                java.awt.Desktop.getDesktop().open(out.toFile())
+            } catch (e: Exception) {
+                showError("无法打开附件：${e.message}")
+            }
+        }
+    }
+
+    fun saveAttachment(ref: com.safeincloud.core.model.AttachmentRef, target: java.io.File) {
+        val store = attachments() ?: return
+        scope.launch {
+            try {
+                val bytes = store.read(ref)
+                java.nio.file.Files.write(target.toPath(), bytes)
+                _state.update { it.copy(message = "已保存：${target.name}") }
+            } catch (e: Exception) {
+                showError("保存附件失败：${e.message}")
+            }
+        }
+    }
+
+    fun deleteAttachment(itemId: String, ref: com.safeincloud.core.model.AttachmentRef) {
+        val store = attachments() ?: return
+        val item = _state.value.vault?.item(itemId) ?: return
+        scope.launch {
+            runCatching { store.delete(ref.id) }
+            item.attachments.removeAll { it.id == ref.id }
+            item.updatedAt = com.safeincloud.core.model.now()
+            _state.value.vault?.touch()
+            persist()
+            _state.update { it.copy(message = "已删除附件") }
+        }
+    }
+
+    private fun sanitizeFileName(name: String): String =
+        name.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "attachment" }
+
+    private fun guessMime(lower: String): String = when {
+        lower.endsWith(".pdf") -> "application/pdf"
+        lower.endsWith(".png") -> "image/png"
+        lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
+        lower.endsWith(".gif") -> "image/gif"
+        lower.endsWith(".txt") -> "text/plain"
+        lower.endsWith(".csv") -> "text/csv"
+        lower.endsWith(".zip") -> "application/zip"
+        else -> "application/octet-stream"
     }
 
     fun refreshBackups() {

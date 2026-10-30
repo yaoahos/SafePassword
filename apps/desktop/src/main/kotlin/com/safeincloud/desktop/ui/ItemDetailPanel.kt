@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.RestoreFromTrash
+import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
@@ -32,6 +33,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,7 +51,9 @@ import com.safeincloud.core.model.VaultItem
 import com.safeincloud.desktop.AppViewModel
 import com.safeincloud.desktop.DesktopUiState
 import com.safeincloud.core.security.PasswordStrength
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ItemDetailPanel(state: DesktopUiState, viewModel: AppViewModel) {
@@ -138,10 +142,83 @@ fun ItemDetailPanel(state: DesktopUiState, viewModel: AppViewModel) {
                 Text("标签", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(labelNames.joinToString("、"), style = MaterialTheme.typography.bodyMedium)
             }
+
+            if (item.status != ItemStatus.TRASHED) {
+                AttachmentsSection(item, viewModel)
+            }
         }
 
         SnackbarHost(snackbar)
     }
+}
+
+@Composable
+private fun AttachmentsSection(item: VaultItem, viewModel: AppViewModel) {
+    var pickTrigger by remember { mutableStateOf(0) }
+    var pendingSave by remember { mutableStateOf<com.safeincloud.core.model.AttachmentRef?>(null) }
+
+    LaunchedEffect(pickTrigger) {
+        if (pickTrigger > 0) {
+            val file = withContext(Dispatchers.IO) { pickFileDialog("选择附件") }
+            if (file != null) viewModel.addAttachment(item.id, file)
+            pickTrigger = 0
+        }
+    }
+    LaunchedEffect(pendingSave) {
+        val ref = pendingSave ?: return@LaunchedEffect
+        val file = withContext(Dispatchers.IO) { pickFileDialog("保存附件", save = true, defaultName = ref.name) }
+        if (file != null) viewModel.saveAttachment(ref, file)
+        pendingSave = null
+    }
+
+    Spacer(Modifier.height(16.dp))
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            "附件（${item.attachments.size}）",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        OutlinedButton(onClick = { pickTrigger++ }) { Text("添加附件") }
+    }
+    item.attachments.forEach { ref ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(ref.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                Text(
+                    formatSize(ref.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = { viewModel.openAttachment(ref) }, modifier = Modifier.width(32.dp)) {
+                Icon(Icons.Outlined.OpenInNew, contentDescription = "打开", modifier = Modifier.width(17.dp))
+            }
+            IconButton(onClick = { pendingSave = ref }, modifier = Modifier.width(32.dp)) {
+                Icon(Icons.Outlined.Save, contentDescription = "另存为", modifier = Modifier.width(17.dp))
+            }
+            IconButton(onClick = { viewModel.deleteAttachment(item.id, ref) }, modifier = Modifier.width(32.dp)) {
+                Icon(Icons.Outlined.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error, modifier = Modifier.width(17.dp))
+            }
+        }
+    }
+    if (item.attachments.isEmpty()) {
+        Text(
+            "暂无附件，可添加文档、图片等文件。",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
+
+private fun formatSize(bytes: Long): String = when {
+    bytes >= 1 shl 20 -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+    bytes >= 1 shl 10 -> "%.1f KB".format(bytes / 1024.0)
+    else -> "$bytes B"
 }
 
 @Composable
