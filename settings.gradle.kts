@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "SafePassword"
 include(":core")
 include(":apps:android")
+include(":apps:desktop")
