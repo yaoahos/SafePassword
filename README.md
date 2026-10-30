@@ -5,13 +5,13 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 - 应用名：`SafePassword`
 - 项目名：`SafePassword`
 - 包名：`com.safeincloud`
-- 正式版本：`1.0.0`（versionCode 1）
+- 正式版本：`1.1.0`（versionCode 2）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`dist/SafePassword-1.0.0-release.apk`
-- APK 大小：14,172,534 字节
-- SHA-256：`8719FFCA28F66E761D8B5D9E916E482FAE467AFAE81597E6B6087409017303A9`
-- 发布下载：[Releases · v1.0.0](https://github.com/yaoahos/SafePassword/releases/tag/v1.0.0)（APK + 源码包）
+- 正式 APK：`dist/SafePassword-1.1.0-release.apk`
+- APK 大小：14,189,863 字节
+- SHA-256：`C98799A2A5AB380B997153147EAC6B15B23579BB62D795BA50FBA2E7A1A46585`
+- 发布下载：[Releases · v1.1.0](https://github.com/yaoahos/SafePassword/releases/tag/v1.1.0)
 
 > 本项目是独立实现，与 SafeInCloud 官方无关联，也未使用其源代码。界面与交互仅作为设计参考；SafeInCloud 名称及相关权益归其权利人所有。
 
@@ -258,24 +258,24 @@ apps/android/build/outputs/apk/release/android-release.apk
 重命名并复制到 `dist/`：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.0-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.1.0-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose dist\SafePassword-1.0.0-release.apk
-aapt.exe dump badging dist\SafePassword-1.0.0-release.apk
+apksigner.bat verify --verbose dist\SafePassword-1.1.0-release.apk
+aapt.exe dump badging dist\SafePassword-1.1.0-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.safeincloud`
-- `versionCode: 1`
-- `versionName: 1.0.0`
+- `versionCode: 2`
+- `versionName: 1.1.0`
 - `application-label: SafePassword`
 - APK Signature Scheme v2：通过
-- 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`DYNAMIC_RECEIVER_NOT_EXPORTED`
+- 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`
 
 ### 6. 构建环境变量（可选）
 
@@ -517,6 +517,14 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/10/30**
+- 新增 检查更新与自更新，可在通知栏查看下载进度，下载完成后直接安装
+- 新增 「关于」页与侧边栏软件名处的检查更新入口，更新日志随包内置、离线可看
+- 新增 秘密字段类型，与密码一样默认隐藏，但不参与弱密码、重复密码与泄露检测
+- 优化 页面切换动画：标签页淡入缩放，层级页面左右滑动，返回时方向相反
+- 优化 同步状态提示 3 秒后自动消失，常驻显示上次同步时间
+- 修复 从安全中心进入条目编辑后，保存会跳回首页的问题
 
 **2026/10/29**
 - 新增 密码库创建、恢复与解锁，支持主密码和指纹两种方式
