@@ -20,6 +20,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -52,7 +53,7 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
     var password by remember { mutableStateOf(state.webDav.password) }
     var remoteDir by remember { mutableStateOf(state.webDav.remoteDir) }
     var autoSync by remember { mutableStateOf(state.settings.autoSync) }
-    var pullInterval by remember { mutableStateOf(state.settings.pullIntervalMinutes) }
+    var pullIntervalSeconds by remember { mutableStateOf(state.settings.pullIntervalSeconds) }
     var showMasterPrompt by remember { mutableStateOf(false) }
     var showPullConfirm by remember { mutableStateOf(false) }
     var masterPassword by remember { mutableStateOf("") }
@@ -200,14 +201,30 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.horizontalScroll(rememberScrollState())
                 ) {
-                    listOf(0 to "关闭", 1 to "1 分钟", 5 to "5 分钟", 15 to "15 分钟").forEach { (minutes, label) ->
+                    val intervalOptions = listOf(
+                        0 to "关闭",
+                        30 to "30 秒",
+                        60 to "1 分钟",
+                        300 to "5 分钟"
+                    )
+                    intervalOptions.forEach { (seconds, label) ->
+                        val selected = pullIntervalSeconds == seconds
                         FilterChip(
-                            selected = pullInterval == minutes,
+                            selected = selected,
                             onClick = {
-                                pullInterval = minutes
-                                viewModel.setPullIntervalMinutes(minutes)
+                                pullIntervalSeconds = seconds
+                                viewModel.setPullIntervalSeconds(seconds)
                             },
-                            label = { Text(label) }
+                            label = {
+                                Text(
+                                    label,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                            )
                         )
                     }
                 }

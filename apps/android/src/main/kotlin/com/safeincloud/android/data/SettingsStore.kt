@@ -30,7 +30,8 @@ data class AppSettings(
      * 多久检查一次云端是否有更新（分钟）。0 表示关闭自动拉取。
      * 只做 HEAD 比对 Last-Modified，云上没有变化时不会产生整库下载。
      */
-    val pullIntervalMinutes: Int = 1
+    /** 自动拉取云端更新的间隔（秒，0 = 关闭）。 */
+    val pullIntervalSeconds: Int = 60
 )
 
 class SettingsStore(context: Context) {
