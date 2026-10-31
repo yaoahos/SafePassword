@@ -31,8 +31,11 @@ class BiometricStore(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     init {
-        // 1.3.x 及更早版本把主密码明文存在这两个文件里，升级后立即清掉。
-        purgeLegacy(context)
+        // 1.3.x 及更早版本把主密码明文存在这两个文件里，升级后立即清掉（只做一次）。
+        if (!prefs.getBoolean(KEY_LEGACY_PURGED, false)) {
+            purgeLegacy(context)
+            prefs.edit().putBoolean(KEY_LEGACY_PURGED, true).apply()
+        }
     }
 
     val available: Boolean
@@ -54,10 +57,12 @@ class BiometricStore(context: Context) {
 
     /** 认证通过后把主密码加密落盘；失败时不留下半截数据。 */
     fun persist(vaultId: String, password: String, cipher: Cipher): Boolean = runCatching {
+        // IV 必须在 doFinal 之前取：部分 Provider 在 doFinal 后会把 IV 重置为 null。
+        val iv = cipher.iv ?: return false
         val encrypted = cipher.doFinal(password.toByteArray(Charsets.UTF_8))
         prefs.edit()
             .putString(keyCipher(vaultId), Base64.encodeToString(encrypted, Base64.NO_WRAP))
-            .putString(keyIv(vaultId), Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+            .putString(keyIv(vaultId), Base64.encodeToString(iv, Base64.NO_WRAP))
             .apply()
         true
     }.getOrDefault(false)
@@ -139,6 +144,7 @@ class BiometricStore(context: Context) {
         const val KEY_CIPHER = "cipher_"
         const val KEY_IV = "iv_"
         const val KEY_ALIAS = "safeincloud.biometric.v2"
+        const val KEY_LEGACY_PURGED = "legacy_purged"
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val TAG_BITS = 128
