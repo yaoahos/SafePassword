@@ -5,13 +5,13 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 - 应用名：`SafePassword`
 - 项目名：`SafePassword`
 - 包名：`com.safeincloud`
-- 正式版本：`1.2.0`（versionCode 3）
+- 正式版本：`1.3.0`（versionCode 4）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`dist/SafePassword-1.2.0-release.apk`
-- APK 大小：2,574,837 字节
-- SHA-256：`B2112ED11822A09A903B71E9D641A54AFBD0F3DEEE10B4D01FC9ED51626F9B18`
-- 发布下载：[Releases · v1.2.0](https://github.com/yaoahos/SafePassword/releases/tag/v1.2.0)
+- 正式 APK：`dist/SafePassword-1.3.0-release.apk`
+- APK 大小：2,591,745 字节
+- SHA-256：`D2BDE177BAD1779EB5701DE295834E5CDDB0516F77BA7D38C3536C1CFF70F3C6`
+- 发布下载：[Releases · v1.3.0](https://github.com/yaoahos/SafePassword/releases/tag/v1.3.0)
 
 > 本项目是独立实现，与 SafeInCloud 官方无关联，也未使用其源代码。界面与交互仅作为设计参考；SafeInCloud 名称及相关权益归其权利人所有。
 
@@ -283,21 +283,21 @@ apps/android/build/outputs/apk/release/android-release.apk
 重命名并复制到 `dist/`：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.1.0-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.3.0-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose dist\SafePassword-1.2.0-release.apk
-aapt.exe dump badging dist\SafePassword-1.2.0-release.apk
+apksigner.bat verify --verbose dist\SafePassword-1.3.0-release.apk
+aapt.exe dump badging dist\SafePassword-1.3.0-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.safeincloud`
-- `versionCode: 3`
-- `versionName: 1.2.0`
+- `versionCode: 4`
+- `versionName: 1.3.0`
 - `application-label: SafePassword`
 - APK Signature Scheme v2：通过
 - 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`
@@ -526,6 +526,17 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**1.3.0 — 2026/10/31**
+- 新增 自动拉取云端更新，可选关闭、30 秒、1 分钟、5 分钟；解锁后与回到前台时也会各检查一次
+- 新增 删除以墓碑方式同步，彻底删除的条目不会再被云端旧数据复活
+- 优化 密码库默认按创建时间排序，标题支持中文拼音排序，点击可切换升序与降序
+- 优化 排序菜单用主题色标出当前方式，选中后自动关闭，副标题只保留条目数
+- 优化 指纹解锁改用系统密钥保护主密码，凭据不再以明文保存
+- 优化 默认禁止截屏与最近任务预览，复制的密码标记为敏感内容
+- 优化 更新安装只接受应用自己下载的安装包；WebDAV 登录凭据只发送到所配置的服务器
+- 修复 修改主密码后指纹凭据仍然有效的问题，现在会失效并要求重新开启
+- 修复 密码库文件被篡改时读取可能异常的问题
 
 **2026/10/31**
 - 优化 安装包体积大幅减小，下载与安装更快

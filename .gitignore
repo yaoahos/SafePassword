@@ -90,3 +90,6 @@ logs/
 .env
 .env.*
 secrets.properties
+
+# ---- 本机协作备忘（记录本地环境与约定，不进入公开仓库）----
+AGENTS.md
