@@ -1,5 +1,6 @@
 package com.safeincloud.android.ui
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +52,7 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
     var password by remember { mutableStateOf(state.webDav.password) }
     var remoteDir by remember { mutableStateOf(state.webDav.remoteDir) }
     var autoSync by remember { mutableStateOf(state.settings.autoSync) }
+    var pullInterval by remember { mutableStateOf(state.settings.pullIntervalMinutes) }
     var showMasterPrompt by remember { mutableStateOf(false) }
     var showPullConfirm by remember { mutableStateOf(false) }
     var masterPassword by remember { mutableStateOf("") }
@@ -183,6 +186,37 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+            }
+
+            SectionCard {
+                Text("自动拉取云端更新")
+                Text(
+                    "按间隔检查云端是否有改动，只有云端变化时才下载；选“关闭”则不主动拉取",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                ) {
+                    listOf(0 to "关闭", 1 to "1 分钟", 5 to "5 分钟", 15 to "15 分钟").forEach { (minutes, label) ->
+                        FilterChip(
+                            selected = pullInterval == minutes,
+                            onClick = {
+                                pullInterval = minutes
+                                viewModel.setPullIntervalMinutes(minutes)
+                            },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "解锁后与回到前台时也会各检查一次",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             if (restore) {

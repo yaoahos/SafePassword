@@ -133,6 +133,7 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
         state.onlyFavorites -> "收藏"
         !state.filterLabelId.isNullOrBlank() -> activeLabelName ?: "标签"
         state.sortMode == SortMode.UPDATED -> "最近修改"
+        state.sortMode == SortMode.CREATED -> "最近创建"
         else -> "全部"
     }
     val vaultName = state.activeMeta?.name ?: "我的密码库"
@@ -140,6 +141,7 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
         state.onlyFavorites -> "$vaultName · ${itemList.size} 个收藏"
         !state.filterLabelId.isNullOrBlank() -> "$vaultName · ${itemList.size} 个条目"
         state.sortMode == SortMode.UPDATED -> "$vaultName · 按最近修改排序"
+        state.sortMode == SortMode.CREATED -> "$vaultName · 按创建时间排序"
         else -> "$vaultName · $activeCount 个密码"
     }
     val selectedItems = itemList.filter { it.id in selectedIds }

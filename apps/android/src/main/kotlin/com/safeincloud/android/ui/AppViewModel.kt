@@ -39,6 +39,7 @@ import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -61,6 +62,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var backgroundAt: Long = 0
     private var syncJob: Job? = null
     private var updateJob: Job? = null
+    /** 自动拉取（轮询云端是否有更新）的后台任务。 */
+    private var pullJob: Job? = null
+    /** 上一次看到的远端 Last-Modified，0 表示还没取到过。 */
+    private var lastRemoteMtime: Long = 0
+    /** 上一次实际检查云端的时间，用于限制回前台时的检查频率。 */
+    private var lastPullCheckAt: Long = 0
     private var failedAttempts = 0
     private var lockedUntil = 0L
 
@@ -168,6 +175,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 maybeAutoBackup(opened, updatedMeta)
+                // 解锁后立刻检查一次云端与本机谁更新，并启动定时拉取。
+                restartPullLoop()
+                checkRemoteIfDue(force = true)
             } catch (e: Exception) {
                 if (e is WrongPasswordException) {
                     failedAttempts++
@@ -206,6 +216,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         active = null
         masterPassword = null
         attachmentStore = null
+        pullJob?.cancel()
+        pullJob = null
+        lastRemoteMtime = 0
+        lastPullCheckAt = 0
         _state.update {
             it.copy(
                 unlocked = false,
@@ -445,6 +459,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     persist()
                     recomputeSecurity()
                     _state.update { it.copy(message = "已永久删除") }
+                    scheduleSync()
                 }
             } catch (e: Exception) {
                 fail(e)
@@ -463,6 +478,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 persist()
                 recomputeSecurity()
                 _state.update { it.copy(message = "已清空回收站（$count 条）") }
+                scheduleSync()
             } catch (e: Exception) {
                 fail(e)
             }
@@ -745,6 +761,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setAutoLockSeconds(value: Int) = updateSettings { it.copy(autoLockSeconds = value) }
     fun setAutoBackupDays(value: Int) = updateSettings { it.copy(autoBackupDays = value) }
     fun setAutoSync(value: Boolean) = updateSettings { it.copy(autoSync = value) }
+
+    /** 修改自动拉取间隔（分钟，0=关闭）。改完立即重建轮询任务。 */
+    fun setPullIntervalMinutes(value: Int) {
+        updateSettings { it.copy(pullIntervalMinutes = value) }
+        restartPullLoop()
+        if (value > 0) checkRemoteIfDue(force = true)
+    }
     fun setScreenshotAllowed(value: Boolean) = updateSettings { it.copy(screenshotAllowed = value) }
     fun setHibpApiKey(value: String) = updateSettings { it.copy(hibpApiKey = value.trim()) }
 
@@ -781,6 +804,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setWebDav(config: WebDavConfig) {
         container.settings.webDav = config
         _state.update { it.copy(webDav = config) }
+        // 服务器或目录变了，之前的远端时间戳不再有意义。
+        lastRemoteMtime = 0
+        restartPullLoop()
     }
 
     fun testWebDav(config: WebDavConfig) {
@@ -875,6 +901,67 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         syncJob = viewModelScope.launch(Dispatchers.IO) {
             delay(1500)
             doSync(silent = true)
+        }
+    }
+
+    /** 重建自动拉取定时器；间隔为 0、未解锁或未配置 WebDAV 时只停掉定时器。 */
+    private fun restartPullLoop() {
+        pullJob?.cancel()
+        pullJob = null
+        if (!_state.value.unlocked) return
+        if (!_state.value.webDav.isConfigured()) return
+        val minutes = _state.value.settings.pullIntervalMinutes
+        if (minutes <= 0) return
+        pullJob = viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(minutes * 60_000L)
+                if (!_state.value.unlocked) break
+                runCatching { pullIfRemoteChanged() }
+            }
+        }
+    }
+
+    /**
+     * 解锁成功与回到前台时各检查一次云端。
+     * force=false 且距上次检查不足一个间隔时直接跳过，避免频繁请求
+     * （坚果云免费版限制 600 次请求 / 30 分钟）。
+     */
+    private fun checkRemoteIfDue(force: Boolean = false) {
+        if (!_state.value.unlocked) return
+        if (!_state.value.webDav.isConfigured()) return
+        val minutes = _state.value.settings.pullIntervalMinutes
+        if (minutes <= 0) return
+        if (!force && now() - lastPullCheckAt < minutes * 60_000L) return
+        lastPullCheckAt = now()
+        viewModelScope.launch(Dispatchers.IO) { runCatching { pullIfRemoteChanged() } }
+    }
+
+    /** 云端没有变化时只花一次 HEAD 请求；确认变化后才做整库同步。 */
+    private suspend fun pullIfRemoteChanged() {
+        val session = active ?: return
+        val meta = _state.value.activeMeta ?: return
+        val config = _state.value.webDav
+        if (!config.isConfigured()) return
+        if (_state.value.busy || _state.value.syncConflict) return
+        val remotePath = config.remotePath(config.vaultKey(session.vault.name.ifBlank { meta.id }))
+        val client = WebDavClient(config, OkHttp.create())
+        try {
+            val stat = client.stat(remotePath) ?: return
+            val changed = when {
+                // 服务器没给 Last-Modified，只能保守地认为有变化。
+                stat.lastModified <= 0 -> true
+                // 首次检查：比本机上次同步时间新才算有更新。
+                lastRemoteMtime <= 0 -> stat.lastModified > session.vault.lastSyncedAt
+                else -> stat.lastModified != lastRemoteMtime
+            }
+            lastRemoteMtime = stat.lastModified
+            if (!changed) return
+            doSync(silent = true)
+            // 同步后服务器时间会变，重新记录，避免下一次把自己刚上传的当成远端更新。
+            lastRemoteMtime = runCatching { client.stat(remotePath)?.lastModified ?: 0L }
+                .getOrDefault(lastRemoteMtime)
+        } finally {
+            client.close()
         }
     }
 
@@ -1349,6 +1436,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val timeout = _state.value.settings.autoLockSeconds
         if (timeout >= 0 && now() - at >= timeout * 1000L) {
             lock()
+        } else {
+            // 回到前台时顺带检查一次云端，是否真的拉取由 lastPullCheckAt 控制。
+            checkRemoteIfDue()
         }
     }
 
