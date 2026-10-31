@@ -222,7 +222,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 backStack = emptyList(),
                 originTab = Screen.Vault,
                 security = SecurityReport(),
-                syncStatus = ""
+                syncStatus = "",
+                // 锁定后一律收起浮层，避免解锁界面上残留更新日志、更新提示或安装询问。
+                error = null,
+                message = null,
+                showChangelog = false,
+                updateDialogVisible = false,
+                updateReadyFile = null,
+                syncConflict = false
             )
         }
     }
@@ -1398,30 +1405,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 } ?: published.firstOrNull()
                 val current = BuildConfig.VERSION_NAME
                 if (latest == null) {
-                    _state.update {
-                        it.copy(updateChecking = false, changelog = notes, message = "未找到可用的发布版本")
-                    }
+                    _state.update { it.copy(changelog = notes) }
+                    showMessage("未找到可用的发布版本")
                     return@launch
                 }
                 val info = GitHubUpdater.toUpdateInfo(latest)
                 val newer = GitHubUpdater.isNewer(info.version, current) && info.apkUrl.isNotBlank()
                 _state.update {
                     it.copy(
-                        updateChecking = false,
                         changelog = notes,
                         updateInfo = info.takeIf { newer },
-                        updateDialogVisible = newer && showDialog,
-                        message = if (newer) {
-                            "发现新版本 v${info.version}"
-                        } else {
-                            "当前已是最新版本 v$current"
-                        }
+                        updateDialogVisible = newer && showDialog
                     )
                 }
-            } catch (e: Exception) {
-                _state.update {
-                    it.copy(updateChecking = false, message = "检查更新失败：${e.message ?: "网络异常"}")
+                if (newer) {
+                    // 用户主动点检查才弹更新框；后台检查只留 updateInfo，由「检查更新」那一行
+                    // 的副标题提示。否则后台检查会在用户没操作时弹框，多数时候正好落在解锁界面上。
+                    if (showDialog) return@launch
+                    showMessage("发现新版本 v${info.version}")
+                } else {
+                    showMessage("当前已是最新版本 v$current")
                 }
+            } catch (e: Exception) {
+                // 网络失败、超时、GitHub 限流或返回异常内容都归到这一类，只给用户可读提示。
+                android.util.Log.w("AppViewModel", "检查更新失败", e)
+                showMessage("检查更新失败，请检查网络后重试")
+            } finally {
+                _state.update { it.copy(updateChecking = false) }
             }
         }
     }
@@ -1454,13 +1464,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 UpdateNotifications.clear(app)
+                target.delete()
+                android.util.Log.w("AppViewModel", "下载更新失败", e)
                 _state.update {
                     it.copy(
                         updateDownloading = false,
                         updateProgress = -1,
-                        message = "下载失败：${e.message ?: "网络异常"}"
+                        updateReadyFile = null
                     )
                 }
+                showMessage("下载失败，请检查网络后重试")
             }
         }
     }
@@ -1473,6 +1486,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun consumeUpdateReady() = _state.update { it.copy(updateReadyFile = null) }
+
+    /** 通知栏点开后安装没能直接完成时，回到应用内给出可重试的安装入口。 */
+    fun offerInstall(path: String) = _state.update { it.copy(updateReadyFile = path) }
 
     fun openChangelog() {
         // 更新日志随包内置，离线也能查看，内容只包含功能介绍与问题修复。

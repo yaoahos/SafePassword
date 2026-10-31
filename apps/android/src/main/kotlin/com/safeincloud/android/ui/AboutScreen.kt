@@ -171,12 +171,7 @@ fun AboutScreen(viewModel: AppViewModel, state: AppUiState) {
                         }
                     }
                 )
-                SettingRow(
-                    title = "更新日志",
-                    subtitle = "查看各版本的新增功能与修复",
-                    onClick = { viewModel.openChangelog() },
-                    trailing = { Icon(Icons.Outlined.History, contentDescription = null) }
-                )
+                // 进度条紧跟「检查更新」，否则会像是给下面的「更新日志」加了个进度条。
                 if (state.updateDownloading) {
                     Spacer(Modifier.height(8.dp))
                     LinearProgressIndicator(
@@ -184,6 +179,12 @@ fun AboutScreen(viewModel: AppViewModel, state: AppUiState) {
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
+                SettingRow(
+                    title = "更新日志",
+                    subtitle = "查看各版本的新增功能与修复",
+                    onClick = { viewModel.openChangelog() },
+                    trailing = { Icon(Icons.Outlined.History, contentDescription = null) }
+                )
             }
 
             Spacer(Modifier.height(24.dp))

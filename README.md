@@ -5,13 +5,13 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 - 应用名：`SafePassword`
 - 项目名：`SafePassword`
 - 包名：`com.safeincloud`
-- 正式版本：`1.3.0`（versionCode 4）
+- 正式版本：`1.4.0`（versionCode 5）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`dist/SafePassword-1.3.0-release.apk`
-- APK 大小：2,591,745 字节
-- SHA-256：`D2BDE177BAD1779EB5701DE295834E5CDDB0516F77BA7D38C3536C1CFF70F3C6`
-- 发布下载：[Releases · v1.3.0](https://github.com/yaoahos/SafePassword/releases/tag/v1.3.0)
+- 正式 APK：`dist/SafePassword-1.4.0-release.apk`
+- APK 大小：2,591,981 字节
+- SHA-256：`BB07429F445A7F6A0F9391D81B330AABA65164DAF414DF8AD4D9D535E961987C`
+- 发布下载：[Releases · v1.4.0](https://github.com/yaoahos/SafePassword/releases/tag/v1.4.0)
 
 > 本项目是独立实现，与 SafeInCloud 官方无关联，也未使用其源代码。界面与交互仅作为设计参考；SafeInCloud 名称及相关权益归其权利人所有。
 
@@ -283,21 +283,21 @@ apps/android/build/outputs/apk/release/android-release.apk
 重命名并复制到 `dist/`：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.3.0-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.4.0-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose dist\SafePassword-1.3.0-release.apk
-aapt.exe dump badging dist\SafePassword-1.3.0-release.apk
+apksigner.bat verify --verbose dist\SafePassword-1.4.0-release.apk
+aapt.exe dump badging dist\SafePassword-1.4.0-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.safeincloud`
-- `versionCode: 4`
-- `versionName: 1.3.0`
+- `versionCode: 5`
+- `versionName: 1.4.0`
 - `application-label: SafePassword`
 - APK Signature Scheme v2：通过
 - 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`
@@ -526,6 +526,12 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/11/01 · 1.4.0**
+- 优化 检查更新时若发现新版本，才会显示「有新版本」提示，避免每次检查都出现黑色提示条
+- 修复 检查更新失败或网络超时时，提示语不再显示原始异常，改为明确的错误说明
+- 修复 下载更新的进度条位置错误地跟着「更新日志」显示，现移至「检查更新」项下
+- 修复 下载完成后点击通知栏可能无法唤起安装的问题，失败时会给出提示
 
 **2026/10/31 · 1.3.0**
 - 新增 自动拉取云端更新，可选关闭、30 秒、1 分钟、5 分钟；解锁后与回到前台时也会各检查一次
