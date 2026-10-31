@@ -249,6 +249,15 @@ keytool -genkeypair -v -keystore release.keystore -alias safepassword -keyalg RS
 gradlew.bat :core:test :apps:android:assembleRelease
 ```
 
+release 构建已启用代码压缩与资源收缩，并只保留真机 ABI：
+
+- R8 代码压缩与混淆（`isMinifyEnabled = true`）
+- 资源收缩（`isShrinkResources = true`）
+- ABI 仅 `arm64-v8a`、`armeabi-v7a`（去掉模拟器专用的 x86 / x86_64）
+- 压缩后 APK 体积约 2.5 MB
+
+混淆映射保存在 `apps/android/build/outputs/mapping/release/mapping.txt`，排查线上崩溃时用它将堆栈还原为可读的类名与方法名。若需要保留独立调试包，debug 构建不做压缩和 ABI 过滤，行为与之前一致。
+
 产物：
 
 ```text
