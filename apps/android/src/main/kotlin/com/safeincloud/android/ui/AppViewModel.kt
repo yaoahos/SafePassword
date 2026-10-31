@@ -453,7 +453,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val session = active ?: return
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val removed = session.vault.items.removeAll { it.id == itemId }
+                val removed = session.vault.purgeItem(itemId)
                 if (removed) {
                     session.vault.touch()
                     persist()
@@ -471,13 +471,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val session = active ?: return
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val count = session.vault.items.count { it.status == ItemStatus.TRASHED }
-                if (count == 0) return@launch
-                session.vault.items.removeAll { it.status == ItemStatus.TRASHED }
+                val doomed = session.vault.items.filter { it.status == ItemStatus.TRASHED }.map { it.id }
+                if (doomed.isEmpty()) return@launch
+                // 逐条删除并留墓碑，否则云端会在下一次合并时把它们送回来。
+                doomed.forEach { session.vault.purgeItem(it) }
                 session.vault.touch()
                 persist()
                 recomputeSecurity()
-                _state.update { it.copy(message = "已清空回收站（$count 条）") }
+                _state.update { it.copy(message = "已清空回收站（${doomed.size} 条）") }
                 scheduleSync()
             } catch (e: Exception) {
                 fail(e)
