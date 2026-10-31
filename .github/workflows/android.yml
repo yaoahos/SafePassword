@@ -43,7 +43,7 @@ jobs:
         run: ./gradlew :core:test :apps:android:assembleDebug --console=plain --no-daemon
 
       - name: Upload debug APK
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: SafePassword-debug
           path: apps/android/build/outputs/apk/debug/*.apk
