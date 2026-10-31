@@ -176,6 +176,7 @@ SafePassword 面向希望把密码数据掌握在自己手里的用户。它不�
 - 不包含统计、广告、崩溃上报 SDK。
 - HIBP 使用 SHA-1 前缀查询，服务端无法从请求中直接得到完整密码。
 - 密码库同步传输的是密文文件；WebDAV 服务商只能看到密文和文件大小。
+- 明文流量策略集中在 `apps/android/src/main/res/xml/network_security_config.xml`：因为要支持用户自建的 HTTP WebDAV 服务才允许 cleartext，TLS 仍只信任系统 CA。
 - 截屏默认允许，可在设置中关闭；关闭后系统会阻止截屏与最近任务预览。
 
 ### 5. 发布签名

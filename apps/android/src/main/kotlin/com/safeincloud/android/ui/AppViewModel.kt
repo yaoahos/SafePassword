@@ -1,11 +1,8 @@
 package com.safeincloud.android.ui
 
 import android.app.Application
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.util.Base64
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.safeincloud.android.SafeInCloudApplication
@@ -17,7 +14,6 @@ import com.safeincloud.android.update.UpdateLog
 import com.safeincloud.android.update.UpdateNotifications
 import com.safeincloud.core.crypto.VaultContainer
 import com.safeincloud.core.crypto.WrongPasswordException
-import com.safeincloud.core.io.SafeInCloudCard
 import com.safeincloud.core.io.SafeInCloudXml
 import com.safeincloud.core.io.VaultCodec
 import com.safeincloud.core.model.AttachmentRef
@@ -50,7 +46,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
-import java.io.ByteArrayOutputStream
 import java.io.File
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -692,9 +687,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }.getOrNull()
     }
 
-    private fun sanitizeFileName(name: String): String =
-        name.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(80).ifBlank { "attachment" }
-
     // ---------------------------------------------------------------- filters
 
     fun setSearch(value: String) = _state.update { it.copy(search = value) }
@@ -1124,77 +1116,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 fail(e)
             }
         }
-    }
-
-    private fun compactIconData(raw: String): String {
-        if (raw.isBlank()) return ""
-        val clean = raw.substringAfter("base64,", raw).filterNot { it.isWhitespace() }
-        if (clean.isBlank()) return ""
-        return runCatching {
-            val bytes = Base64.decode(clean, Base64.DEFAULT)
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching clean
-            var sample = 1
-            while (bounds.outWidth / sample > 256 || bounds.outHeight / sample > 256) {
-                sample *= 2
-            }
-            val bitmap = BitmapFactory.decodeByteArray(
-                bytes,
-                0,
-                bytes.size,
-                BitmapFactory.Options().apply { inSampleSize = sample }
-            ) ?: return@runCatching clean
-            val scaled = if (bitmap.width > 128 || bitmap.height > 128) {
-                Bitmap.createScaledBitmap(bitmap, 128, 128, true)
-            } else {
-                bitmap
-            }
-            val output = ByteArrayOutputStream()
-            val compressed = scaled.compress(Bitmap.CompressFormat.PNG, 100, output)
-            if (scaled !== bitmap) scaled.recycle()
-            bitmap.recycle()
-            if (!compressed || output.size() == 0) {
-                clean
-            } else {
-                val encoded = Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
-                val probe = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(
-                    Base64.decode(encoded, Base64.DEFAULT),
-                    0,
-                    Base64.decode(encoded, Base64.DEFAULT).size,
-                    probe
-                )
-                if (probe.outWidth > 0 && probe.outHeight > 0) encoded else clean
-            }
-        }.getOrDefault(clean)
-    }
-
-    private fun mergeSafeInCloudCards(vault: Vault, cards: List<SafeInCloudCard>): Pair<Int, Int> {
-        val labelsByName = vault.labels.associateBy { it.name }.toMutableMap()
-        var newLabels = 0
-        cards.forEach { card ->
-            val labelIds = card.labelNames.mapNotNull { name ->
-                val existing = labelsByName[name]
-                val label = if (existing != null) {
-                    existing
-                } else {
-                    Label(name = name).also {
-                        vault.labels.add(it)
-                        labelsByName[name] = it
-                        newLabels++
-                    }
-                }
-                label.id
-            }
-            val item = card.item
-            item.fields = item.fields.map { it.copy(id = newId()) }.toMutableList()
-            item.attachments = mutableListOf()
-            item.iconData = compactIconData(item.iconData)
-            item.labelIds = labelIds.toMutableList()
-            vault.items.add(item)
-        }
-        return cards.size to newLabels
     }
 
     fun importEncrypted(uri: Uri, password: String, name: String) {
