@@ -79,11 +79,23 @@ object VaultCodec {
     }
 
     private fun escapeCsv(value: String): String {
-        if (value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r')) {
-            return "\"" + value.replace("\"", "\"\"") + "\""
+        val text = neutralizeFormula(value)
+        if (text.contains(',') || text.contains('"') || text.contains('\n') || text.contains('\r')) {
+            return "\"" + text.replace("\"", "\"\"") + "\""
         }
-        return value
+        return text
     }
+
+    /**
+     * Excel / WPS 会把以 = + - @ 开头（以及 Tab、CR 开头）的单元格当公式执行，
+     * 导出的 CSV 一旦被打开就可能触发外部请求或命令。加单引号前缀强制按文本处理。
+     */
+    private fun neutralizeFormula(value: String): String {
+        if (value.isEmpty()) return value
+        return if (value[0] in CSV_FORMULA_PREFIX) "'$value" else value
+    }
+
+    private val CSV_FORMULA_PREFIX = charArrayOf('=', '+', '-', '@', '\t', '\r')
 
     private fun parseCsv(text: String): List<List<String>> {
         val rows = mutableListOf<List<String>>()

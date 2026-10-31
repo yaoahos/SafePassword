@@ -122,14 +122,12 @@ fun ToolsScreen(viewModel: AppViewModel, state: AppUiState) {
                     scope.launch { drawerState.close() }
                     viewModel.setOnlyFavorites(false)
                     viewModel.setFilterLabel(null)
-                    viewModel.setSortMode(SortMode.TITLE)
                     viewModel.navigate(Screen.Vault)
                 },
                 onFavorites = {
                     scope.launch { drawerState.close() }
                     viewModel.setOnlyFavorites(true)
                     viewModel.setFilterLabel(null)
-                    viewModel.setSortMode(SortMode.TITLE)
                     viewModel.navigate(Screen.Vault)
                 },
                 onTrash = {

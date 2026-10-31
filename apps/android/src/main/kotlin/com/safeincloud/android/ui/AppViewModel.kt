@@ -46,6 +46,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import javax.crypto.Cipher
 import java.io.BufferedReader
 import java.io.File
 
@@ -85,12 +86,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val webDav = container.settings.webDav
             val lastId = container.settings.lastVaultId
             val meta = vaults.firstOrNull { it.id == lastId } ?: vaults.firstOrNull()
+            // 旧版本把主密码明文存过，升级时凭据已被清除；此时如果设置里仍标记“已开启”，
+            // 会和实际状态不一致（设置页显示已开启、解锁页却没有指纹按钮），这里纠正过来。
+            var reconciled = settings
+            if (meta != null && reconciled.fingerprintEnabled && !container.biometric.has(meta.id)) {
+                reconciled = reconciled.copy(fingerprintEnabled = false, biometricEnabled = false)
+                container.settings.settings = reconciled
+            }
             val fingerprint = BiometricHelper.status(app)
             _state.update {
                 it.copy(
                     initialized = true,
                     vaults = vaults,
-                    settings = settings,
+                    settings = reconciled,
                     webDav = webDav,
                     activeMeta = meta,
                     screen = Screen.Unlock,
@@ -195,23 +203,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun unlockWithFingerprint() {
-        val meta = _state.value.activeMeta ?: run {
-            fail("没有可解锁的密码库")
-            return
-        }
-        if (!_state.value.settings.fingerprintEnabled) {
-            fail("尚未开启指纹解锁")
-            return
-        }
-        val password = container.biometric.get(meta.id)
-        if (password.isNullOrBlank()) {
-            fail("尚未为这个密码库保存解锁凭据，请先在设置中开启")
-            return
-        }
-        unlock(meta.id, password)
-    }
-
     fun lock() {
         active = null
         masterPassword = null
@@ -305,10 +296,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 changed.saveTo(container.vaultStore.vaultFile(meta))
                 active = changed
                 masterPassword = newPassword
-                if (container.settings.settings.fingerprintEnabled) {
-                    container.biometric.save(meta.id, newPassword)
+                val hadFingerprint = container.settings.settings.fingerprintEnabled
+                if (hadFingerprint) {
+                    // 修改主密码后旧密文作废：重新加密需要再弹一次指纹，这里直接关闭指纹解锁，
+                    // 让用户在设置里重新开启，避免把旧密码留在磁盘上。
+                    container.biometric.clear(meta.id)
+                    container.settings.settings =
+                        container.settings.settings.copy(fingerprintEnabled = false, biometricEnabled = false)
                 }
-                _state.update { it.copy(message = "主密码已修改", unlocked = true) }
+                _state.update {
+                    it.copy(
+                        message = if (hadFingerprint) "主密码已修改，指纹解锁需要重新开启" else "主密码已修改",
+                        settings = container.settings.settings,
+                        biometricSaved = container.biometric.has(meta.id)
+                    )
+                }
             } catch (e: Exception) {
                 fail("旧主密码不正确，或修改失败")
             }
@@ -707,7 +709,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // ---------------------------------------------------------------- filters
 
     fun setSearch(value: String) = _state.update { it.copy(search = value) }
-    fun setSortMode(value: SortMode) = _state.update { it.copy(sortMode = value) }
+    /**
+     * 切换排序：换成别的排序方式时用该方式的默认方向（标题升序，时间降序）；
+     * 再次点击同一种方式则反转方向。
+     */
+    fun setSortMode(value: SortMode) = _state.update { state ->
+        if (state.sortMode == value) {
+            state.copy(sortAscending = !state.sortAscending)
+        } else {
+            state.copy(sortMode = value, sortAscending = value == SortMode.TITLE)
+        }
+    }
     fun setFilterLabel(id: String?) = _state.update { it.copy(filterLabelId = id) }
     fun setThemeColor(value: Long) = updateSettings { it.copy(themeColor = value) }
     fun setOnlyFavorites(value: Boolean) = _state.update { it.copy(onlyFavorites = value) }
@@ -778,17 +790,61 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(settings = updated) }
     }
 
-    fun enableFingerprint() {
+    /** 开启指纹前先准备一个加密 Cipher，随后由 BiometricPrompt 授权它。 */
+    fun prepareFingerprintEnrollment(): Cipher? {
+        _state.value.activeMeta ?: return null
+        return container.biometric.prepareEncrypt()
+    }
+
+    /**
+     * 开启指纹解锁。必须传入已通过 BiometricPrompt 认证的 Cipher：
+     * 主密码会用它（Keystore 里“每次使用都要认证”的密钥）加密后再落盘。
+     */
+    fun enableFingerprint(cipher: Cipher?) {
         val password = masterPassword ?: run {
             fail("请先解锁密码库")
             return
         }
         val meta = _state.value.activeMeta ?: return
-        container.biometric.save(meta.id, password)
+        if (cipher == null) {
+            fail("指纹验证未完成，无法开启指纹解锁")
+            return
+        }
+        if (!container.biometric.persist(meta.id, password, cipher)) {
+            fail("系统安全存储不可用，已拒绝以明文保存主密码；请检查设备锁屏设置后重试")
+            return
+        }
         updateSettings { it.copy(fingerprintEnabled = true, biometricEnabled = true) }
         _state.update {
             it.copy(biometricSaved = true, message = "已开启指纹解锁")
         }
+    }
+
+    /** 准备用于解锁的解密 Cipher；密钥被指纹变更作废时返回 null，需要重新开启。 */
+    fun prepareBiometricUnlock(): Cipher? {
+        val meta = _state.value.activeMeta ?: return null
+        return container.biometric.prepareDecrypt(meta.id)
+    }
+
+    /** 只有拿到认证通过的 Cipher 才能走到这里，主密码由 Keystore 密钥解出。 */
+    fun unlockWithBiometricCipher(cipher: Cipher?) {
+        val meta = _state.value.activeMeta ?: run {
+            fail("没有可解锁的密码库")
+            return
+        }
+        if (!_state.value.settings.fingerprintEnabled) {
+            fail("尚未开启指纹解锁")
+            return
+        }
+        val unlocked = cipher?.let { container.biometric.decrypt(meta.id, it) }
+        if (unlocked.isNullOrBlank()) {
+            container.biometric.clear(meta.id)
+            updateSettings { it.copy(fingerprintEnabled = false, biometricEnabled = false) }
+            _state.update { it.copy(biometricSaved = false) }
+            fail("指纹凭据已失效（可能是指纹被重新录入），请用主密码解锁后重新开启")
+            return
+        }
+        unlock(meta.id, unlocked)
     }
 
     fun disableFingerprint() {
@@ -803,6 +859,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // ---------------------------------------------------------------- WebDAV
 
     fun setWebDav(config: WebDavConfig) {
+        // WebDAV 密码属于敏感凭据：系统加密存储不可用时拒绝保存，避免明文落盘。
+        if (config.password.isNotBlank() && !container.settings.encrypted) {
+            fail("系统加密存储不可用，无法安全保存 WebDAV 密码；请先恢复设备锁屏后再试")
+            return
+        }
         container.settings.webDav = config
         _state.update { it.copy(webDav = config) }
         // 服务器或目录变了，之前的远端时间戳不再有意义。

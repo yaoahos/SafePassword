@@ -145,22 +145,27 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
                                     } else {
                                         viewModel.disableFingerprint()
                                     }
+                                } else if (!checked) {
+                                    viewModel.disableFingerprint()
                                 } else {
-                                    BiometricHelper.authenticate(
-                                        activity,
-                                        onSuccess = {
-                                            if (checked) {
-                                                viewModel.enableFingerprint()
-                                            } else {
-                                                viewModel.disableFingerprint()
+                                    // 开启指纹需要一把 Keystore 密钥：先认证，拿到授权的 Cipher 再加密主密码。
+                                    val cipher = viewModel.prepareFingerprintEnrollment()
+                                    if (cipher == null) {
+                                        viewModel.showError("系统安全存储不可用，无法开启指纹解锁")
+                                    } else {
+                                        BiometricHelper.authenticate(
+                                            activity,
+                                            cipher,
+                                            onSuccess = { authenticated ->
+                                                viewModel.enableFingerprint(authenticated)
+                                            },
+                                            onFailure = { code, message ->
+                                                if (!BiometricHelper.isUserCancelled(code)) {
+                                                    viewModel.showError(message)
+                                                }
                                             }
-                                        },
-                                        onFailure = { code, message ->
-                                            if (!BiometricHelper.isUserCancelled(code)) {
-                                                viewModel.showError(message)
-                                            }
-                                        }
-                                    )
+                                        )
+                                    }
                                 }
                             }
                         )

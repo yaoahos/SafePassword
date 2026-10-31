@@ -64,9 +64,15 @@ fun UnlockScreen(viewModel: AppViewModel, state: AppUiState, activity: MainActiv
     var autoRetries by remember(meta?.id) { mutableStateOf(0) }
 
     fun startFingerprint(auto: Boolean = false) {
+        val cipher = viewModel.prepareBiometricUnlock()
+        if (cipher == null) {
+            viewModel.showError("指纹凭据不可用（可能指纹被重新录入），请用主密码解锁后重新开启指纹")
+            return
+        }
         BiometricHelper.authenticate(
             activity,
-            onSuccess = { viewModel.unlockWithFingerprint() },
+            cipher,
+            onSuccess = { authenticated -> viewModel.unlockWithBiometricCipher(authenticated) },
             onFailure = { code, message ->
                 when {
                     // 用户自己点了"使用主密码"或返回键：属于预期操作，保持安静。

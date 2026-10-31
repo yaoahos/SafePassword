@@ -6,6 +6,7 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import javax.crypto.Cipher
 
 /**
  * Fingerprint-only biometric helper. Face authentication is intentionally not offered:
@@ -28,7 +29,7 @@ object BiometricHelper {
             )
         }
         val manager = BiometricManager.from(context)
-        return when (manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)) {
+        return when (manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)) {
             BiometricManager.BIOMETRIC_SUCCESS ->
                 Status(true, true, "指纹识别可用")
             BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED ->
@@ -42,9 +43,14 @@ object BiometricHelper {
         }
     }
 
+    /**
+     * 带 CryptoObject 的认证：只有认证通过，系统才会把 keystore 密钥的这次使用权限放开，
+     * 回调里的 Cipher 才能完成加解密。指纹因此成为真正的前置条件，而不是界面上的装饰。
+     */
     fun authenticate(
         activity: FragmentActivity,
-        onSuccess: () -> Unit,
+        cipher: Cipher?,
+        onSuccess: (Cipher?) -> Unit,
         onFailure: (code: Int, message: String) -> Unit
     ) {
         val executor = ContextCompat.getMainExecutor(activity)
@@ -54,7 +60,7 @@ object BiometricHelper {
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     super.onAuthenticationSucceeded(result)
-                    onSuccess()
+                    onSuccess(result.cryptoObject?.cipher)
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
@@ -67,11 +73,16 @@ object BiometricHelper {
             .setTitle("指纹解锁")
             .setSubtitle("验证系统指纹以解锁密码库")
             .setNegativeButtonText("使用主密码")
-            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .setConfirmationRequired(false)
             .build()
-        runCatching { prompt.authenticate(info) }
-            .onFailure { onFailure(ERROR_CANNOT_START, it.message ?: "无法启动指纹验证") }
+        runCatching {
+            if (cipher != null) {
+                prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher))
+            } else {
+                prompt.authenticate(info)
+            }
+        }.onFailure { onFailure(ERROR_CANNOT_START, it.message ?: "无法启动指纹验证") }
     }
 
     /**
