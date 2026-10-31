@@ -2,6 +2,7 @@ package com.safeincloud.android.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.safeincloud.core.json.AppJson
@@ -79,6 +80,7 @@ class SettingsStore(context: Context) {
     }
 
     companion object {
+        private const val TAG = "SettingsStore"
         private const val KEY_SETTINGS = "settings"
         private const val KEY_WEBDAV = "webdav"
         private const val KEY_LAST_VAULT = "last_vault"
@@ -98,7 +100,9 @@ class SettingsStore(context: Context) {
                     EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                     EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
                 )
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                // 加密存储不可用时回退到明文，保持原有可用性；仅记录日志便于排查，不改变行为。
+                Log.w(TAG, "加密存储初始化失败，回退到明文 SharedPreferences：$fileName", e)
                 context.getSharedPreferences("${fileName}_fallback", Context.MODE_PRIVATE)
             }
         }
