@@ -134,6 +134,18 @@ data class VaultItem(
     )
 }
 
+/**
+ * 已永久删除条目的墓碑。
+ *
+ * 只靠 id + 删除时间就能区分两种情况：条目是被本机删掉了，还是对方设备还没收到这次删除。
+ * 墓碑随库一起序列化和同步，合并时据此阻止条目从云端复活。
+ */
+@Serializable
+data class Tombstone(
+    val id: String,
+    val deletedAt: Long = now()
+)
+
 @Serializable
 data class Vault(
     val schema: Int = 1,
@@ -146,11 +158,14 @@ data class Vault(
     var revision: Long = 0,
     var lastSyncedAt: Long = 0,
     var deviceId: String = newId(),
-    var contentKey: String = ""
+    var contentKey: String = "",
+    var tombstones: MutableList<Tombstone> = mutableListOf()
 ) {
     fun item(id: String): VaultItem? = items.firstOrNull { it.id == id }
 
     fun label(id: String): Label? = labels.firstOrNull { it.id == id }
+
+    fun tombstone(id: String): Tombstone? = tombstones.firstOrNull { it.id == id }
 
     fun activeItems(): List<VaultItem> = items.filter { it.status == ItemStatus.ACTIVE }
 
@@ -158,9 +173,30 @@ data class Vault(
 
     fun trashedItems(): List<VaultItem> = items.filter { it.status == ItemStatus.TRASHED }
 
+    /** 永久删除条目并留下墓碑，避免它在下一次同步时从云端复活。 */
+    fun purgeItem(itemId: String, at: Long = now()): Boolean {
+        val removed = items.removeAll { it.id == itemId }
+        if (removed) recordDeletion(itemId, at)
+        return removed
+    }
+
+    fun recordDeletion(itemId: String, at: Long = now()) {
+        tombstones.removeAll { it.id == itemId }
+        tombstones.add(Tombstone(itemId, at))
+    }
+
+    /** 清理过期墓碑：默认保留 90 天，足以覆盖长期离线的设备。 */
+    fun purgeOldTombstones(before: Long = now() - TOMBSTONE_TTL_MS) {
+        tombstones.removeAll { it.deletedAt < before }
+    }
+
     fun touch() {
         updatedAt = now()
         revision += 1
+    }
+
+    companion object {
+        const val TOMBSTONE_TTL_MS: Long = 90L * 24 * 60 * 60 * 1000
     }
 }
 

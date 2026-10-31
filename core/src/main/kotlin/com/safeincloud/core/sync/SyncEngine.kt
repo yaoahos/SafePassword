@@ -197,7 +197,7 @@ class SyncEngine(
                         message = "已使用云端版本覆盖本地"
                     )
                 }
-                val merge = merge(local.vault, remote.vault, last)
+                val merge = VaultMerger.merge(local.vault, remote.vault, last)
                 val updated = local.withVault(merge.vault)
                 webDav.put(remotePath, updated.toBytes())
                 val attachments = syncAttachments(merge.vault)
@@ -216,61 +216,6 @@ class SyncEngine(
             }
         }
     }
-
-    private data class MergeResult(val vault: Vault, val conflicts: Int)
-
-    private fun merge(local: Vault, remote: Vault, lastSyncedAt: Long): MergeResult {
-        val localMap = local.items.associateBy { it.id }
-        val remoteMap = remote.items.associateBy { it.id }
-        val merged = mutableListOf<VaultItem>()
-        var conflicts = 0
-
-        for (id in localMap.keys + remoteMap.keys) {
-            val localItem = localMap[id]
-            val remoteItem = remoteMap[id]
-            when {
-                localItem == null && remoteItem != null -> merged.add(remoteItem)
-                remoteItem == null && localItem != null -> merged.add(localItem)
-                localItem != null && remoteItem != null -> {
-                    val localNew = localItem.updatedAt > lastSyncedAt
-                    val remoteNew = remoteItem.updatedAt > lastSyncedAt
-                    if (localNew && remoteNew && localItem.updatedAt != remoteItem.updatedAt && !sameContent(localItem, remoteItem)) {
-                        val winner = if (localItem.updatedAt >= remoteItem.updatedAt) localItem else remoteItem
-                        val loser = if (winner === localItem) remoteItem else localItem
-                        merged.add(winner)
-                        merged.add(loser.copyAsConflictCopy())
-                        conflicts++
-                    } else if (remoteItem.updatedAt > localItem.updatedAt) {
-                        merged.add(remoteItem)
-                    } else {
-                        merged.add(localItem)
-                    }
-                }
-            }
-        }
-
-        val labels = LinkedHashMap<String, Label>()
-        local.labels.forEach { labels[it.id] = it }
-        remote.labels.forEach { labels.putIfAbsent(it.id, it) }
-
-        val result = local.copy(
-            items = merged.toMutableList(),
-            labels = labels.values.toMutableList(),
-            updatedAt = now(),
-            lastSyncedAt = now(),
-            revision = maxOf(local.revision, remote.revision) + 1
-        )
-        return MergeResult(result, conflicts)
-    }
-
-    private fun sameContent(a: VaultItem, b: VaultItem): Boolean =
-        a.title == b.title &&
-            a.fields == b.fields &&
-            a.notes == b.notes &&
-            a.url == b.url &&
-            a.labelIds == b.labelIds &&
-            a.status == b.status &&
-            a.attachments == b.attachments
 
     private suspend fun syncAttachments(vault: Vault): Pair<Int, Int> {
         val attachments = vault.items.flatMap { it.attachments }.distinctBy { it.id }
