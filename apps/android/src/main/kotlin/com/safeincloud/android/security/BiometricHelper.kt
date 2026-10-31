@@ -45,7 +45,7 @@ object BiometricHelper {
     fun authenticate(
         activity: FragmentActivity,
         onSuccess: () -> Unit,
-        onError: (String) -> Unit
+        onFailure: (code: Int, message: String) -> Unit
     ) {
         val executor = ContextCompat.getMainExecutor(activity)
         val prompt = BiometricPrompt(
@@ -59,12 +59,7 @@ object BiometricHelper {
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     super.onAuthenticationError(errorCode, errString)
-                    when (errorCode) {
-                        BiometricPrompt.ERROR_NEGATIVE_BUTTON,
-                        BiometricPrompt.ERROR_USER_CANCELED,
-                        BiometricPrompt.ERROR_CANCELED -> onError("已取消指纹验证")
-                        else -> onError(errString.toString())
-                    }
+                    onFailure(errorCode, errString.toString())
                 }
             }
         )
@@ -76,6 +71,17 @@ object BiometricHelper {
             .setConfirmationRequired(false)
             .build()
         runCatching { prompt.authenticate(info) }
-            .onFailure { onError(it.message ?: "无法启动指纹验证") }
+            .onFailure { onFailure(ERROR_CANNOT_START, it.message ?: "无法启动指纹验证") }
     }
+
+    /**
+     * 用户自己取消（点了"使用主密码"或返回键）。这类取消是预期行为，不该当成错误提示。
+     * 注意 [BiometricPrompt.ERROR_CANCELED] 不算用户取消——它通常意味着系统在界面尚未就绪、
+     * 或者应用被切到后台时把请求丢弃了，调用方应当重试而不是静默忽略。
+     */
+    fun isUserCancelled(code: Int): Boolean =
+        code == BiometricPrompt.ERROR_NEGATIVE_BUTTON || code == BiometricPrompt.ERROR_USER_CANCELED
+
+    /** prompt.authenticate 直接抛异常（例如宿主 Activity 正在销毁）。 */
+    const val ERROR_CANNOT_START = -1
 }

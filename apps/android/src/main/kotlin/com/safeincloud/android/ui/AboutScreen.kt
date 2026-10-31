@@ -35,6 +35,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.safeincloud.android.BuildConfig
 
+/** 项目开源地址：点击"关于"页中间的标题即可跳转。 */
+private const val PROJECT_URL = "https://github.com/yaoahos/SafePassword"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutScreen(viewModel: AppViewModel, state: AppUiState) {
@@ -67,7 +70,14 @@ fun AboutScreen(viewModel: AppViewModel, state: AppUiState) {
                 modifier = Modifier.height(72.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
-            Text("SafePassword", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(
+                "SafePassword",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable {
+                    runCatching { uriHandler.openUri(PROJECT_URL) }
+                }
+            )
             Text(
                 "版本 ${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodySmall,

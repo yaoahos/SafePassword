@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,8 +48,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
 import com.safeincloud.android.MainActivity
 import com.safeincloud.android.security.BiometricHelper
+import kotlinx.coroutines.delay
 
 @Composable
 fun UnlockScreen(viewModel: AppViewModel, state: AppUiState, activity: MainActivity) {
@@ -58,25 +61,58 @@ fun UnlockScreen(viewModel: AppViewModel, state: AppUiState, activity: MainActiv
     var showRestore by remember { mutableStateOf(false) }
     var visible by remember { mutableStateOf(false) }
     var autoPrompted by remember(meta?.id) { mutableStateOf(false) }
+    var autoRetries by remember(meta?.id) { mutableStateOf(0) }
 
-    fun startFingerprint() {
+    fun startFingerprint(auto: Boolean = false) {
         BiometricHelper.authenticate(
             activity,
             onSuccess = { viewModel.unlockWithFingerprint() },
-            onError = { message -> if (!message.contains("取消")) viewModel.showError(message) }
+            onFailure = { code, message ->
+                when {
+                    // 用户自己点了"使用主密码"或返回键：属于预期操作，保持安静。
+                    BiometricHelper.isUserCancelled(code) -> Unit
+                    // 界面刚回到前台时，系统可能直接丢弃这次请求（ERROR_CANCELED）。
+                    // 自动弹出的场景下补一次重试，避免"什么都没发生"。
+                    auto && code == BiometricPrompt.ERROR_CANCELED && autoRetries < 1 -> {
+                        autoRetries++
+                        activity.window?.decorView?.postDelayed({
+                            if (!activity.isFinishing &&
+                                activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                            ) {
+                                startFingerprint(auto = true)
+                            }
+                        }, 450L)
+                    }
+                    code == BiometricPrompt.ERROR_CANCELED -> Unit
+                    else -> viewModel.showError(message)
+                }
+            }
         )
     }
 
-    // 锁定后优先弹出指纹；取消一次后仍可用下方按钮手动重试。
-    LaunchedEffect(meta?.id, state.biometricSaved, state.settings.fingerprintEnabled) {
-        if (!autoPrompted &&
-            state.biometricSaved &&
-            state.settings.fingerprintEnabled &&
-            state.fingerprintAvailable
+    // 锁定后优先弹出指纹。必须等 Activity 真正回到 RESUMED、窗口稳定之后再请求，
+    // 否则系统会静默丢弃 BiometricPrompt，表现为"偶尔不弹指纹"。
+    LaunchedEffect(
+        meta?.id,
+        state.biometricSaved,
+        state.settings.fingerprintEnabled,
+        state.fingerprintAvailable
+    ) {
+        if (autoPrompted ||
+            !state.biometricSaved ||
+            !state.settings.fingerprintEnabled ||
+            !state.fingerprintAvailable
         ) {
-            autoPrompted = true
-            startFingerprint()
+            return@LaunchedEffect
         }
+        autoPrompted = true
+        var waited = 0L
+        while (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && waited < 2_000L) {
+            delay(40L)
+            waited += 40L
+        }
+        delay(180L)
+        startFingerprint(auto = true)
     }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
