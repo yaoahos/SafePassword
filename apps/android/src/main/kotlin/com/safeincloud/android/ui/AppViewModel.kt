@@ -763,9 +763,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setAutoBackupDays(value: Int) = updateSettings { it.copy(autoBackupDays = value) }
     fun setAutoSync(value: Boolean) = updateSettings { it.copy(autoSync = value) }
 
-    /** 修改自动拉取间隔（分钟，0=关闭）。改完立即重建轮询任务。 */
-    fun setPullIntervalMinutes(value: Int) {
-        updateSettings { it.copy(pullIntervalMinutes = value) }
+    /** 修改自动拉取间隔（秒，0=关闭）。改完立即重建轮询任务。 */
+    fun setPullIntervalSeconds(value: Int) {
+        updateSettings { it.copy(pullIntervalSeconds = value) }
         restartPullLoop()
         if (value > 0) checkRemoteIfDue(force = true)
     }
@@ -911,11 +911,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         pullJob = null
         if (!_state.value.unlocked) return
         if (!_state.value.webDav.isConfigured()) return
-        val minutes = _state.value.settings.pullIntervalMinutes
-        if (minutes <= 0) return
+        val seconds = _state.value.settings.pullIntervalSeconds
+        if (seconds <= 0) return
         pullJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
-                delay(minutes * 60_000L)
+                delay(seconds * 1_000L)
                 if (!_state.value.unlocked) break
                 runCatching { pullIfRemoteChanged() }
             }
@@ -930,9 +930,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun checkRemoteIfDue(force: Boolean = false) {
         if (!_state.value.unlocked) return
         if (!_state.value.webDav.isConfigured()) return
-        val minutes = _state.value.settings.pullIntervalMinutes
-        if (minutes <= 0) return
-        if (!force && now() - lastPullCheckAt < minutes * 60_000L) return
+        val seconds = _state.value.settings.pullIntervalSeconds
+        if (seconds <= 0) return
+        if (!force && now() - lastPullCheckAt < seconds * 1_000L) return
         lastPullCheckAt = now()
         viewModelScope.launch(Dispatchers.IO) { runCatching { pullIfRemoteChanged() } }
     }
