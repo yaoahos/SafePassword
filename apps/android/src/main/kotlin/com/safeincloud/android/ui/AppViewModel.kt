@@ -1342,12 +1342,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onAppForegrounded() {
+        refreshBiometricAvailability()
         val at = backgroundAt
         backgroundAt = 0
         if (at <= 0 || !_state.value.unlocked) return
         val timeout = _state.value.settings.autoLockSeconds
         if (timeout >= 0 && now() - at >= timeout * 1000L) {
             lock()
+        }
+    }
+
+    /**
+     * 指纹硬件在开机初期、传感器被其它应用占用时会短暂返回不可用。
+     * 每次回到前台重新探测一次，避免一次探测失败就把指纹入口永久置灰。
+     */
+    fun refreshBiometricAvailability() {
+        val available = BiometricHelper.status(app).available
+        if (available != _state.value.fingerprintAvailable) {
+            _state.update { it.copy(fingerprintAvailable = available) }
         }
     }
 

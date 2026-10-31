@@ -155,8 +155,10 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
                                                 viewModel.disableFingerprint()
                                             }
                                         },
-                                        onError = { message ->
-                                            if (!message.contains("取消")) viewModel.showError(message)
+                                        onFailure = { code, message ->
+                                            if (!BiometricHelper.isUserCancelled(code)) {
+                                                viewModel.showError(message)
+                                            }
                                         }
                                     )
                                 }
