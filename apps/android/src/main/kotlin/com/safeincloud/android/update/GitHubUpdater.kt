@@ -50,13 +50,15 @@ object GitHubUpdater {
         try {
             val code = connection.responseCode
             if (code !in 200..299) {
+                // 403/429 是限流，200 但内容不是 JSON 是被中间设备劫持改写。
                 val detail = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
                 throw IllegalStateException(
                     "GitHub 返回 HTTP $code" + if (detail.isBlank()) "" else "：${detail.take(160)}"
                 )
             }
             val text = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            return json.decodeFromString<List<GitHubRelease>>(text)
+            return runCatching { json.decodeFromString<List<GitHubRelease>>(text) }
+                .getOrElse { throw IllegalStateException("GitHub 返回的数据无法解析") }
         } finally {
             connection.disconnect()
         }

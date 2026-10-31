@@ -21,6 +21,16 @@ import java.io.File
 class MainActivity : AppCompatActivity() {
     private val viewModel: AppViewModel by viewModels()
 
+    /**
+     * 从通知点安装时，通知的点击事件常常早于 Compose 首帧组合，直接写 state.message
+     * 会被首帧的 collect 覆盖。先挂在这里，由 AppRoot 首帧取走并显示。
+     */
+    var pendingInstallError: String? = null
+        private set
+
+    internal fun consumePendingInstallError(): String? =
+        pendingInstallError.also { pendingInstallError = null }
+
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -80,8 +90,19 @@ class MainActivity : AppCompatActivity() {
         val raw = intent?.getStringExtra(UpdateNotifications.EXTRA_INSTALL_APK) ?: return
         intent.removeExtra(UpdateNotifications.EXTRA_INSTALL_APK)
         UpdateNotifications.clear(this)
-        val file = resolveUpdateApk(raw) ?: return
-        ApkInstaller.install(this, file)
+        val file = resolveUpdateApk(raw)
+        if (file == null) {
+            viewModel.showMessage("安装包已失效，请在应用内重新下载")
+            return
+        }
+        val error = ApkInstaller.install(this, file).exceptionOrNull()
+        if (error != null) {
+            // 以前这里吞掉异常，表现就是「点了通知没反应」。
+            // 通知的点击事件会比 Compose 首帧先到，直接读 state.message 大概率被首帧组合覆盖掉，
+            // 所以记一个待发提示，等 AppRoot 起来后取用，确保用户一定看得见失败原因。
+            pendingInstallError = error.message ?: "无法启动安装器，请手动安装"
+            android.util.Log.w("MainActivity", "从通知安装失败", error)
+        }
     }
 
     /** 只放行 cacheDir/updates/<name>.apk 内的真实文件。 */

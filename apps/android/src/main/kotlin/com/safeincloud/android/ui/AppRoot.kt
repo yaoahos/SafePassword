@@ -60,6 +60,12 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
         activity.setSecure(!state.settings.screenshotAllowed)
     }
 
+    LaunchedEffect(Unit) {
+        // 从通知点安装失败的提示。通知的点击事件比 Compose 首帧先到，
+        // 所以先挂在 Activity 上，等界面起来后再交给 snackbar 显示。
+        activity.consumePendingInstallError()?.let { viewModel.showMessage(it) }
+    }
+
     LaunchedEffect(state.message) {
         val message = state.message ?: return@LaunchedEffect
         val showJob = launch {

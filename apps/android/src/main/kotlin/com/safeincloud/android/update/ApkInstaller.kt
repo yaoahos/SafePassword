@@ -28,7 +28,7 @@ object ApkInstaller {
         if (!file.exists()) return Result.failure(IllegalStateException("安装包不存在，请重新下载"))
         if (!canInstall(context)) {
             openInstallPermissionSettings(context)
-            return Result.failure(IllegalStateException("请允许「安装未知应用」后再次点击安装"))
+            return Result.failure(IllegalStateException("请先允许 SafePassword 安装未知应用，再回来点安装"))
         }
         return runCatching {
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
@@ -37,6 +37,9 @@ object ApkInstaller {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
+        }.onFailure {
+            // 常见原因是没有安装器应用、文件被系统清掉、或 FileProvider 路径对不上。
+            android.util.Log.w("ApkInstaller", "启动系统安装器失败：${file.absolutePath}", it)
         }
     }
 }
