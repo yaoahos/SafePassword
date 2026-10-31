@@ -111,8 +111,8 @@ fun ChangelogDialog(
                             Spacer(Modifier.height(12.dp))
                         }
                         val heading = listOfNotNull(
-                            note.version.takeIf { it.isNotBlank() }?.let { "v$it" },
-                            note.date.takeIf { it.isNotBlank() }
+                            note.date.takeIf { it.isNotBlank() },
+                            note.version.takeIf { it.isNotBlank() }?.let { "v$it" }
                         ).joinToString("    ")
                         Text(heading, style = MaterialTheme.typography.titleSmall)
                         Spacer(Modifier.height(6.dp))
