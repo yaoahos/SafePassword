@@ -25,7 +25,12 @@ data class AppSettings(
     /** Empty means all entries; otherwise a label id shown by default. */
     val defaultLabelId: String? = null,
     /** Whether the vault search box also matches password field values. */
-    val searchPasswords: Boolean = false
+    val searchPasswords: Boolean = false,
+    /**
+     * 多久检查一次云端是否有更新（分钟）。0 表示关闭自动拉取。
+     * 只做 HEAD 比对 Last-Modified，云上没有变化时不会产生整库下载。
+     */
+    val pullIntervalMinutes: Int = 1
 )
 
 class SettingsStore(context: Context) {

@@ -20,6 +20,9 @@ import io.ktor.http.appendPathSegments
 import io.ktor.http.contentType
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
+import java.time.Instant
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 @Serializable
 data class WebDavConfig(
@@ -53,6 +56,13 @@ data class WebDavConfig(
 }
 
 class WebDavException(message: String, val status: Int? = null) : Exception(message)
+
+/** 远端文件的轻量元数据，用于判断“云端是否被别的设备改过”，避免每次都全量下载。 */
+data class RemoteStat(
+    val lastModified: Long,
+    val size: Long,
+    val etag: String?
+)
 
 class WebDavClient(
     private val config: WebDavConfig,
@@ -143,6 +153,24 @@ class WebDavClient(
     suspend fun exists(path: String): Boolean {
         val response = client.request(url(path)) { method = HttpMethod.Head }
         return response.status.value in 200..299
+    }
+
+    /**
+     * 读取远端文件的 Last-Modified / Content-Length / ETag。
+     * 服务器未返回这些头时对应字段为 0 / -1 / null，调用方应把 lastModified 为 0 视为“无法判断是否变化”。
+     */
+    suspend fun stat(path: String): RemoteStat? {
+        val response = client.request(url(path)) { method = HttpMethod.Head }
+        if (response.status.value !in 200..299) return null
+        val lastModified = response.headers[HttpHeaders.LastModified]?.let(::parseHttpDate) ?: 0L
+        val size = response.headers[HttpHeaders.ContentLength]?.toLongOrNull() ?: -1L
+        return RemoteStat(lastModified, size, response.headers[HttpHeaders.ETag])
+    }
+
+    private fun parseHttpDate(value: String): Long = runCatching {
+        ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli()
+    }.getOrElse {
+        runCatching { Instant.parse(value).toEpochMilli() }.getOrDefault(0L)
     }
 
     suspend fun put(path: String, bytes: ByteArray) {

@@ -26,7 +26,7 @@ data class AppUiState(
     val message: String? = null,
     val error: String? = null,
     val search: String = "",
-    val sortMode: SortMode = SortMode.TITLE,
+    val sortMode: SortMode = SortMode.CREATED,
     val filterLabelId: String? = null,
     val onlyFavorites: Boolean = false,
     val security: SecurityReport = SecurityReport(),
@@ -80,7 +80,12 @@ fun visibleItems(state: AppUiState): List<VaultItem> {
         }
     }
     val sorted = when (state.sortMode) {
-        SortMode.TITLE -> items.sortedBy { it.title.lowercase() }
+        SortMode.TITLE -> {
+            // 中文按拼音、英文按字母且忽略大小写。
+            // Collator 不是线程安全对象，因此每次排序单独创建一个。
+            val collator = java.text.Collator.getInstance(java.util.Locale.CHINA)
+            items.sortedWith(java.util.Comparator<VaultItem> { a, b -> collator.compare(a.title, b.title) })
+        }
         SortMode.UPDATED -> items.sortedByDescending { it.updatedAt }
         SortMode.CREATED -> items.sortedByDescending { it.createdAt }
         SortMode.SIZE -> items.sortedByDescending { item ->
