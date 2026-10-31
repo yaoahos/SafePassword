@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    WebDAV 服务器地址由用户在应用内自行填写，自建服务常用 http:// 或自签名证书，
+    因此仍需允许明文流量。这里用显式配置替代 application 上的 usesCleartextTraffic
+    全局开关：策略集中、可审计，将来要按域名收窄也只改这一个文件。
+
+    注意：把 cleartextTrafficPermitted 改成 false 会直接导致 http:// 的 WebDAV 同步失败。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
