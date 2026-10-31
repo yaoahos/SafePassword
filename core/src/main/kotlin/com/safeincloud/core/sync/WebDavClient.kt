@@ -16,6 +16,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.URLBuilder
+import io.ktor.http.Url
 import io.ktor.http.appendPathSegments
 import io.ktor.http.contentType
 import kotlinx.coroutines.delay
@@ -68,6 +69,13 @@ class WebDavClient(
     private val config: WebDavConfig,
     engine: HttpClientEngine
 ) {
+    /**
+     * 只对用户配置的主机附带 Basic 凭据。
+     * 之前是无条件 `sendWithoutRequest { true }`，一旦服务器 3xx 跳到别的主机，
+     * ktor 会把用户名密码重新附加过去，等于把凭据送给第三方。
+     */
+    private val authHost: String = runCatching { Url(config.baseUrl).host }.getOrDefault("")
+
     private val client = HttpClient(engine) {
         expectSuccess = false
         followRedirects = true
@@ -76,7 +84,9 @@ class WebDavClient(
                 credentials {
                     BasicAuthCredentials(config.username, config.password)
                 }
-                sendWithoutRequest { true }
+                sendWithoutRequest { request ->
+                    authHost.isNotBlank() && request.url.host.equals(authHost, ignoreCase = true)
+                }
             }
         }
         install(HttpTimeout) {

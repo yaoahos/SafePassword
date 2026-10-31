@@ -27,6 +27,8 @@ data class AppUiState(
     val error: String? = null,
     val search: String = "",
     val sortMode: SortMode = SortMode.CREATED,
+    /** 排序方向：true 为升序，false 为降序。时间类排序默认降序（新条目在前）。 */
+    val sortAscending: Boolean = false,
     val filterLabelId: String? = null,
     val onlyFavorites: Boolean = false,
     val security: SecurityReport = SecurityReport(),
@@ -79,19 +81,17 @@ fun visibleItems(state: AppUiState): List<VaultItem> {
                 }
         }
     }
-    val sorted = when (state.sortMode) {
+    val comparator = when (state.sortMode) {
         SortMode.TITLE -> {
             // 中文按拼音、英文按字母且忽略大小写。
             // Collator 不是线程安全对象，因此每次排序单独创建一个。
             val collator = java.text.Collator.getInstance(java.util.Locale.CHINA)
-            items.sortedWith(java.util.Comparator<VaultItem> { a, b -> collator.compare(a.title, b.title) })
+            java.util.Comparator<VaultItem> { a, b -> collator.compare(a.title, b.title) }
         }
-        SortMode.UPDATED -> items.sortedByDescending { it.updatedAt }
-        SortMode.CREATED -> items.sortedByDescending { it.createdAt }
-        SortMode.SIZE -> items.sortedByDescending { item ->
-            item.fields.sumOf { it.value.length } + item.notes.length
-        }
+        SortMode.UPDATED -> java.util.Comparator<VaultItem> { a, b -> a.updatedAt.compareTo(b.updatedAt) }
+        SortMode.CREATED -> java.util.Comparator<VaultItem> { a, b -> a.createdAt.compareTo(b.createdAt) }
     }
+    val sorted = items.sortedWith(if (state.sortAscending) comparator else comparator.reversed())
     return sorted.sortedByDescending { it.favorite }
 }
 

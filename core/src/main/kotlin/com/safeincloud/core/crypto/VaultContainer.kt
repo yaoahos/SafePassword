@@ -87,6 +87,9 @@ class VaultContainer private constructor(
         private val MAGIC = byteArrayOf('S'.code.toByte(), 'I'.code.toByte(), 'C'.code.toByte(), 'V'.code.toByte())
         private const val VERSION = 1
         private const val SALT_BYTES = 16
+
+        /** 单个库文件的密文上限，防止伪造头部把内存撑爆。 */
+        private const val MAX_PAYLOAD_BYTES = 64 * 1024 * 1024
         private val PAYLOAD_AAD = "SICV-PAYLOAD".toByteArray(Charsets.UTF_8)
 
         fun create(vault: Vault, password: CharArray): VaultContainer {
@@ -149,14 +152,22 @@ class VaultContainer private constructor(
                 if (iterations < 10_000 || iterations > 10_000_000) {
                     throw VaultFormatException("PBKDF2 迭代次数异常")
                 }
-                val salt = ByteArray(data.readInt()).also { data.readFully(it) }
-                if (salt.size !in 8..64) throw VaultFormatException("salt 长度异常")
-                val wrapped = ByteArray(data.readInt()).also { data.readFully(it) }
-                if (wrapped.size !in 40..256) throw VaultFormatException("密钥包裹长度异常")
-                val payload = ByteArray(data.readInt()).also { data.readFully(it) }
-                if (payload.isEmpty()) throw VaultFormatException("密文为空")
+                val salt = data.readChunk(8, 64, "salt")
+                val wrapped = data.readChunk(40, 256, "密钥包裹")
+                val payload = data.readChunk(1, MAX_PAYLOAD_BYTES, "密文")
                 return Header(iterations, salt, wrapped, payload)
             }
+        }
+
+        /**
+         * 读取“长度 + 内容”字段：先校验长度范围与剩余可读字节数，再分配数组。
+         * 直接 ByteArray(readInt()) 会让损坏或伪造的文件用超大长度把进程撑爆。
+         */
+        private fun DataInputStream.readChunk(min: Int, max: Int, name: String): ByteArray {
+            val size = readInt()
+            if (size < min || size > max) throw VaultFormatException("$name 长度异常")
+            if (size > available()) throw VaultFormatException("$name 长度超出文件实际大小")
+            return ByteArray(size).also { readFully(it) }
         }
     }
 }

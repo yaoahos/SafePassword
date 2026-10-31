@@ -70,11 +70,26 @@ class MainActivity : AppCompatActivity() {
         if (!granted) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
-    /** 点击“更新已下载”通知后直接拉起系统安装器。 */
+    /**
+     * 点击“更新已下载”通知后直接拉起系统安装器。
+     *
+     * MainActivity 必须 exported（LAUNCHER），因此这个 intent extra 任何应用都能伪造；
+     * 只接受本应用缓存目录下我们自己的 .apk，避免被当作任意安装包的启动器。
+     */
     private fun handleIntent(intent: Intent?) {
-        val path = intent?.getStringExtra(UpdateNotifications.EXTRA_INSTALL_APK) ?: return
+        val raw = intent?.getStringExtra(UpdateNotifications.EXTRA_INSTALL_APK) ?: return
         intent.removeExtra(UpdateNotifications.EXTRA_INSTALL_APK)
         UpdateNotifications.clear(this)
-        ApkInstaller.install(this, File(path))
+        val file = resolveUpdateApk(raw) ?: return
+        ApkInstaller.install(this, file)
     }
+
+    /** 只放行 cacheDir/updates/<name>.apk 内的真实文件。 */
+    private fun resolveUpdateApk(raw: String): File? = runCatching {
+        val dir = File(cacheDir, "updates").canonicalFile
+        val file = File(raw).canonicalFile
+        val inside = file.path.startsWith(dir.path + File.separator)
+        if (!inside || !file.name.endsWith(".apk", ignoreCase = true) || !file.isFile) return null
+        file
+    }.getOrNull()
 }

@@ -20,6 +20,5 @@ sealed interface Screen {
 enum class SortMode {
     TITLE,
     UPDATED,
-    CREATED,
-    SIZE
+    CREATED
 }

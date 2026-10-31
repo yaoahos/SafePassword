@@ -118,6 +118,7 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
         state.activeVault,
         state.search,
         state.sortMode,
+        state.sortAscending,
         state.filterLabelId,
         state.onlyFavorites,
         state.settings.searchPasswords,
@@ -132,18 +133,11 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
     val collectionTitle = when {
         state.onlyFavorites -> "收藏"
         !state.filterLabelId.isNullOrBlank() -> activeLabelName ?: "标签"
-        state.sortMode == SortMode.UPDATED -> "最近修改"
-        state.sortMode == SortMode.CREATED -> "最近创建"
         else -> "全部"
     }
     val vaultName = state.activeMeta?.name ?: "我的密码库"
-    val collectionSubtitle = when {
-        state.onlyFavorites -> "$vaultName · ${itemList.size} 个收藏"
-        !state.filterLabelId.isNullOrBlank() -> "$vaultName · ${itemList.size} 个条目"
-        state.sortMode == SortMode.UPDATED -> "$vaultName · 按最近修改排序"
-        state.sortMode == SortMode.CREATED -> "$vaultName · 按创建时间排序"
-        else -> "$vaultName · $activeCount 个密码"
-    }
+    // 标题保持分类名不变，条目数与排序方式统一放在副标题里。
+    val collectionSubtitle = "$vaultName · ${itemList.size} 个条目"
     val selectedItems = itemList.filter { it.id in selectedIds }
     val allSelected = itemList.isNotEmpty() && selectedIds.size == itemList.size
     val commonLabelIds = if (selectedItems.isEmpty()) {
@@ -179,7 +173,7 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
         scope.launch { drawerState.close() }
     }
 
-    LaunchedEffect(state.search, state.filterLabelId, state.onlyFavorites, state.sortMode) {
+    LaunchedEffect(state.search, state.filterLabelId, state.onlyFavorites, state.sortMode, state.sortAscending) {
         selectedIds = emptySet()
         selectionMode = false
     }
@@ -198,14 +192,12 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
                     scope.launch { drawerState.close() }
                     viewModel.setOnlyFavorites(false)
                     viewModel.setFilterLabel(null)
-                    viewModel.setSortMode(SortMode.TITLE)
                     viewModel.navigate(Screen.Vault)
                 },
                 onFavorites = {
                     scope.launch { drawerState.close() }
                     viewModel.setOnlyFavorites(true)
                     viewModel.setFilterLabel(null)
-                    viewModel.setSortMode(SortMode.TITLE)
                     viewModel.navigate(Screen.Vault)
                 },
                 onTrash = {
@@ -338,20 +330,29 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
                             }
                             DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
                                 SortMode.entries.forEach { mode ->
+                                    val active = mode == state.sortMode
                                     DropdownMenuItem(
                                         text = {
                                             Text(
-                                                when (mode) {
-                                                    SortMode.TITLE -> "按标题"
-                                                    SortMode.UPDATED -> "按修改时间"
-                                                    SortMode.CREATED -> "按创建时间"
-                                                    SortMode.SIZE -> "按大小"
-                                                }
+                                                buildString {
+                                                    append(
+                                                        when (mode) {
+                                                            SortMode.TITLE -> "按标题"
+                                                            SortMode.UPDATED -> "按修改时间"
+                                                            SortMode.CREATED -> "按创建时间"
+                                                        }
+                                                    )
+                                                    if (active) {
+                                                        append(if (state.sortAscending) "  ↑" else "  ↓")
+                                                    }
+                                                },
+                                                color = if (active) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onSurface
                                             )
                                         },
                                         onClick = {
-                                            sortMenu = false
                                             viewModel.setSortMode(mode)
+                                            sortMenu = false
                                         }
                                     )
                                 }
