@@ -162,7 +162,11 @@ internal fun conciseNotes(raw: String, limit: Int = 6): List<String> =
                 line.startsWith(">") ||
                 line.startsWith("|") ||
                 line.startsWith("![") ||
-                line.startsWith("---")
+                line.startsWith("---") ||
+                line.startsWith("大小：") ||
+                line.startsWith("大小:") ||
+                line.startsWith("支持系统") ||
+                line.startsWith("certutil")
         }
         .filterNot { DATE_ONLY.matches(it) }
         .take(limit)
