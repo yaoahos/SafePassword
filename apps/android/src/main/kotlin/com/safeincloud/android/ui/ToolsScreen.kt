@@ -158,7 +158,8 @@ fun ToolsScreen(viewModel: AppViewModel, state: AppUiState) {
         topBar = {
             SafeCompactTopBar(
                 title = "工具",
-                onMenu = { scope.launch { drawerState.open() } }
+                onMenu = { scope.launch { drawerState.open() } },
+                onLock = viewModel::lock
             )
         },
         bottomBar = {

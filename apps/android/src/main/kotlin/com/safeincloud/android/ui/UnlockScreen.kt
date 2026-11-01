@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +45,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -56,6 +61,8 @@ import kotlinx.coroutines.delay
 @Composable
 fun UnlockScreen(viewModel: AppViewModel, state: AppUiState, activity: MainActivity) {
     val meta = state.activeMeta
+    val focusRequester = remember { FocusRequester() }
+    var passwordFocused by remember { mutableStateOf(false) }
     var password by remember(meta?.id) { mutableStateOf("") }
     var showCreate by remember { mutableStateOf(false) }
     var showRestore by remember { mutableStateOf(false) }
@@ -196,14 +203,44 @@ fun UnlockScreen(viewModel: AppViewModel, state: AppUiState, activity: MainActiv
             )
             Spacer(Modifier.height(16.dp))
             if (state.biometricSaved && state.settings.fingerprintEnabled) {
-                Button(
-                    onClick = { startFingerprint() },
-                    enabled = state.fingerprintAvailable,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Outlined.Fingerprint, contentDescription = null)
-                    Spacer(Modifier.size(8.dp))
-                    Text(if (state.fingerprintAvailable) "用指纹解锁" else "指纹不可用")
+                val fpButtonColors = if (passwordFocused) {
+                    ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    ButtonDefaults.buttonColors()
+                }
+                val fpButtonBorder = if (passwordFocused) {
+                    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                } else {
+                    null
+                }
+                if (passwordFocused) {
+                    OutlinedButton(
+                        onClick = { startFingerprint() },
+                        enabled = state.fingerprintAvailable,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = fpButtonColors,
+                        border = fpButtonBorder
+                    ) {
+                        Icon(Icons.Outlined.Fingerprint, contentDescription = null)
+                        Spacer(Modifier.size(8.dp))
+                        Text(if (state.fingerprintAvailable) "用指纹解锁" else "指纹不可用")
+                    }
+                } else {
+                    Button(
+                        onClick = { startFingerprint() },
+                        enabled = state.fingerprintAvailable,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = fpButtonColors
+                    ) {
+                        Icon(Icons.Outlined.Fingerprint, contentDescription = null)
+                        Spacer(Modifier.size(8.dp))
+                        Text(if (state.fingerprintAvailable) "用指纹解锁" else "指纹不可用")
+                    }
+                }
+                LaunchedEffect(passwordFocused) {
+                    if (passwordFocused) focusRequester.requestFocus()
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(
@@ -218,7 +255,17 @@ fun UnlockScreen(viewModel: AppViewModel, state: AppUiState, activity: MainActiv
                 onValueChange = { password = it },
                 label = "主密码",
                 visible = visible,
-                onToggleVisibility = { visible = !visible }
+                onToggleVisibility = { visible = !visible },
+                modifier = Modifier
+                    .then(
+                        if (state.biometricSaved && state.settings.fingerprintEnabled) {
+                            Modifier
+                                .focusRequester(focusRequester)
+                                .onFocusChanged { passwordFocused = it.isFocused }
+                        } else {
+                            Modifier
+                        }
+                    )
             )
             Spacer(Modifier.height(12.dp))
             Button(
@@ -290,16 +337,12 @@ fun CreateVaultDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Unit)
                 Spacer(Modifier.height(6.dp))
                 if (password.isNotBlank()) StrengthBar(strength)
                 Spacer(Modifier.height(10.dp))
-                OutlinedTextField(
+                PasswordField(
                     value = confirm,
                     onValueChange = { confirm = it },
-                    label = { Text("确认主密码") },
-                    singleLine = true,
-                    isError = mismatch,
-                    colors = safeFieldColors(),
-                    modifier = Modifier.fillMaxWidth(),
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done)
+                    label = "确认主密码",
+                    visible = visible,
+                    onToggleVisibility = { visible = !visible }
                 )
                 if (mismatch) {
                     Text("两次输入不一致", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

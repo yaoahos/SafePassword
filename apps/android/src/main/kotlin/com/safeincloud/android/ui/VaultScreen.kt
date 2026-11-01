@@ -242,7 +242,8 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
                     SafeCompactTopBar(
                         title = stringResource(R.string.app_name),
                         onMenu = { scope.launch { drawerState.open() } },
-                        onSync = viewModel::syncNow
+                        onSync = viewModel::syncNow,
+                        onLock = viewModel::lock
                     )
                 }
             },
