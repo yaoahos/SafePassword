@@ -156,84 +156,87 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
                 modifier = Modifier.fillMaxWidth()
             )
 
-            SectionCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("保存后自动同步")
-                        Text(
-                            "每次修改条目后延迟上传",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = autoSync,
-                        onCheckedChange = {
-                            autoSync = it
-                            viewModel.setAutoSync(it)
-                        }
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "上次同步：${formatDate(state.activeMeta?.lastSyncedAt ?: 0)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (visibleSyncStatus.isNotBlank()) {
-                    Text(
-                        visibleSyncStatus,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-
-            SectionCard {
-                Text("自动拉取云端更新")
-                Text(
-                    "按间隔检查云端是否有改动，只有云端变化时才下载；选“关闭”则不主动拉取",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.horizontalScroll(rememberScrollState())
-                ) {
-                    val intervalOptions = listOf(
-                        0 to "关闭",
-                        30 to "30 秒",
-                        60 to "1 分钟",
-                        300 to "5 分钟"
-                    )
-                    intervalOptions.forEach { (seconds, label) ->
-                        val selected = pullIntervalSeconds == seconds
-                        FilterChip(
-                            selected = selected,
-                            onClick = {
-                                pullIntervalSeconds = seconds
-                                viewModel.setPullIntervalSeconds(seconds)
-                            },
-                            label = {
-                                Text(
-                                    label,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+            if (!restore) {
+                // 「从云端恢复」是首次引导流程，隐藏这两项，避免干扰；WebDAV 同步页保留。
+                SectionCard {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("保存后自动同步")
+                            Text(
+                                "每次修改条目后延迟上传",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+                        Switch(
+                            checked = autoSync,
+                            onCheckedChange = {
+                                autoSync = it
+                                viewModel.setAutoSync(it)
+                            }
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "上次同步：${formatDate(state.activeMeta?.lastSyncedAt ?: 0)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (visibleSyncStatus.isNotBlank()) {
+                        Text(
+                            visibleSyncStatus,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "解锁后与回到前台时也会各检查一次",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+
+                SectionCard {
+                    Text("自动拉取云端更新")
+                    Text(
+                        "按间隔检查云端是否有改动，只有云端变化时才下载；选“关闭”则不主动拉取",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                    ) {
+                        val intervalOptions = listOf(
+                            0 to "关闭",
+                            30 to "30 秒",
+                            60 to "1 分钟",
+                            300 to "5 分钟"
+                        )
+                        intervalOptions.forEach { (seconds, label) ->
+                            val selected = pullIntervalSeconds == seconds
+                            FilterChip(
+                                selected = selected,
+                                onClick = {
+                                    pullIntervalSeconds = seconds
+                                    viewModel.setPullIntervalSeconds(seconds)
+                                },
+                                label = {
+                                    Text(
+                                        label,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                )
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "解锁后与回到前台时也会各检查一次",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             if (restore) {

@@ -1394,6 +1394,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** 查询 GitHub 上最新的正式发布；[showDialog] 为 true 且发现新版本时弹出更新对话框。 */
     fun checkForUpdates(showDialog: Boolean = true) {
         if (_state.value.updateChecking) return
+        // 正在下载或等待安装时再查会重复弹“新版本”，而且此时点“更新”也没有响应。
+        // 与其重查一遍，不如直接告诉用户当前处于什么阶段。
+        _state.value.updateDownloading.let { downloading ->
+            if (downloading) {
+                val progress = _state.value.updateProgress
+                showMessage(
+                    if (progress in 0..99) "正在下载更新：$progress%"
+                    else "正在下载更新，请稍候"
+                )
+                return
+            }
+        }
+        if (_state.value.updateReadyFile != null) {
+            showMessage("新版本已下载完成，请点“安装更新”")
+            return
+        }
         _state.update { it.copy(updateChecking = true) }
         viewModelScope.launch(Dispatchers.IO) {
             try {

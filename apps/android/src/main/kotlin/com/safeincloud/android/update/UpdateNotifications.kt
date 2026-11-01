@@ -15,7 +15,8 @@ object UpdateNotifications {
     const val EXTRA_INSTALL_APK = "extra_install_apk"
 
     private const val CHANNEL_ID = "app_updates"
-    private const val NOTIFICATION_ID = 0x5A1E
+    private const val PROGRESS_ID = 0x5A1E
+    private const val DONE_ID = 0x5A1F
 
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -44,10 +45,19 @@ object UpdateNotifications {
             .setProgress(100, percent.coerceAtLeast(0), indeterminate)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-        runCatching { NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, builder.build()) }
+        runCatching { NotificationManagerCompat.from(context).notify(PROGRESS_ID, builder.build()) }
     }
 
+    /**
+     * 下载完成：撤掉进度通知，另发一条可点击的安装通知。
+     *
+     * 以前这里和进度共用同一个 id，且被 runCatching 吞掉异常，只要发通知时抛一次错，
+     * 进度通知就会永远停在「已完成 100%」且没有点击行为，用户看到的就是「点了没反应」。
+     * 现在两条通知分开，失败会记日志并清理，不会留下一条点不动的进度条。
+     */
     fun completed(context: Context, info: UpdateInfo, apkPath: String) {
+        val manager = NotificationManagerCompat.from(context)
+        runCatching { manager.cancel(PROGRESS_ID) }
         ensureChannel(context)
         val intent = Intent(context, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -67,10 +77,13 @@ object UpdateNotifications {
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-        runCatching { NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, builder.build()) }
+        runCatching { manager.notify(DONE_ID, builder.build()) }
     }
 
+    /** 撤掉进度与安装两条通知（下载失败、取消下载或安装流程结束时调用）。 */
     fun clear(context: Context) {
-        runCatching { NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID) }
+        val manager = NotificationManagerCompat.from(context)
+        runCatching { manager.cancel(PROGRESS_ID) }
+        runCatching { manager.cancel(DONE_ID) }
     }
 }

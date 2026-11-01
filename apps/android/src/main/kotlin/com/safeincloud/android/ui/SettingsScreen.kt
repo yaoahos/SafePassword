@@ -94,11 +94,6 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
                     }
                 },
                 title = { Text("设置") },
-                actions = {
-                    IconButton(onClick = { viewModel.lock() }) {
-                        Icon(Icons.Outlined.Lock, contentDescription = "锁定")
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }
@@ -146,7 +141,22 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
                                         viewModel.disableFingerprint()
                                     }
                                 } else if (!checked) {
-                                    viewModel.disableFingerprint()
+                                    // 关闭指纹也要验证一次指纹，避免他人临时借用手机时直接关掉解锁门槛。
+                                    val decryptCipher = viewModel.prepareBiometricUnlock()
+                                    if (decryptCipher == null) {
+                                        viewModel.showError("指纹凭据已失效，请用主密码解锁后再关闭")
+                                    } else {
+                                        BiometricHelper.authenticate(
+                                            activity,
+                                            decryptCipher,
+                                            onSuccess = { viewModel.disableFingerprint() },
+                                            onFailure = { code, message ->
+                                                if (!BiometricHelper.isUserCancelled(code)) {
+                                                    viewModel.showError(message)
+                                                }
+                                            }
+                                        )
+                                    }
                                 } else {
                                     // 开启指纹需要一把 Keystore 密钥：先认证，拿到授权的 Cipher 再加密主密码。
                                     val cipher = viewModel.prepareFingerprintEnrollment()

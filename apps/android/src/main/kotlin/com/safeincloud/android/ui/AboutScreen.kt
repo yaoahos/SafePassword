@@ -171,14 +171,6 @@ fun AboutScreen(viewModel: AppViewModel, state: AppUiState) {
                         }
                     }
                 )
-                // 进度条紧跟「检查更新」，否则会像是给下面的「更新日志」加了个进度条。
-                if (state.updateDownloading) {
-                    Spacer(Modifier.height(8.dp))
-                    LinearProgressIndicator(
-                        progress = { state.updateProgress.coerceIn(0, 100) / 100f },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
                 SettingRow(
                     title = "更新日志",
                     subtitle = "查看各版本的新增功能与修复",
