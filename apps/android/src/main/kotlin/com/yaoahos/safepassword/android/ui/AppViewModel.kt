@@ -1315,8 +1315,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
     }.getOrNull()
 
+    /** 从所选文件的显示名推一个默认库名，省得用户每次手打。 */
+    fun suggestVaultName(uri: Uri): String {
+        val raw = queryDisplayName(uri)?.substringBeforeLast('.')?.trim().orEmpty()
+        val cleaned = raw.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().take(40)
+        return cleaned.ifBlank { "导入的密码库" }
+    }
+
     fun importEncrypted(uri: Uri, password: String, name: String) {
-        val trimmed = name.trim()
+        // 库名可选：留空就用文件名推一个，用户不用为了能点「导入」先编个名字。
+        val trimmed = name.trim().ifBlank { suggestVaultName(uri) }
         if (trimmed.isEmpty()) {
             fail("请输入密码库名称")
             return
