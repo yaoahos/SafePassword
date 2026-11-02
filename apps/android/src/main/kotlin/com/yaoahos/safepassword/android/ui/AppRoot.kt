@@ -12,6 +12,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -86,7 +87,14 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
         viewModel.goBack()
     }
 
-    SafePasswordTheme(themeColor = Color(state.settings.themeColor)) {
+    SafePasswordTheme(
+        themeColor = Color(state.settings.themeColor),
+        darkTheme = when (state.settings.themeMode) {
+            "LIGHT" -> false
+            "DARK" -> true
+            else -> isSystemInDarkTheme()
+        }
+    ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= 600.dp
             CompositionLocalProvider(LocalWideLayout provides wide) {

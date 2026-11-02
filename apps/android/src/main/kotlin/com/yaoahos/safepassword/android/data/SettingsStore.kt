@@ -25,6 +25,8 @@ data class AppSettings(
     val hibpApiKey: String = "",
     val sortMode: String = "TITLE",
     val themeColor: Long = 0xFF1677FF,
+    /** 外观模式：SYSTEM 跟随系统 / LIGHT 日间 / DARK 夜间。 */
+    val themeMode: String = "SYSTEM",
     /** Empty means all entries; otherwise a label id shown by default. */
     val defaultLabelId: String? = null,
     /** Whether the vault search box also matches password field values. */
