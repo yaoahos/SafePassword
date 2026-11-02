@@ -546,16 +546,17 @@ private fun LabelColorPickerDialog(
                 )
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    val preview = parseLabelHex(customHex) ?: selected
                     Box(
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(42.dp)
                             .clip(CircleShape)
-                            .background(
-                                parseLabelHex(customHex)?.let { Color(it) }
-                                    ?: MaterialTheme.colorScheme.surfaceVariant
-                            )
-                    )
-                    Spacer(Modifier.width(10.dp))
+                            .border(1.5.dp, Color(preview).copy(alpha = 0.45f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        LabelGlyph(color = Color(preview), size = 27.dp)
+                    }
+                    Spacer(Modifier.width(12.dp))
                     OutlinedTextField(
                         value = customHex,
                         onValueChange = {
