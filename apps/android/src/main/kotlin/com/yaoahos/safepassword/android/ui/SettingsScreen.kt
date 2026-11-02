@@ -432,6 +432,7 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
 
     pendingImportVault?.let { uri ->
         ImportVaultDialog(
+            initialName = viewModel.suggestVaultName(uri),
             onDismiss = { pendingImportVault = null },
             onConfirm = { password, name ->
                 pendingImportVault = null
@@ -506,27 +507,31 @@ private fun ChangePasswordDialog(onDismiss: () -> Unit, onConfirm: (String, Stri
 }
 
 @Composable
-private fun ImportVaultDialog(onDismiss: () -> Unit, onConfirm: (String, String) -> Unit) {
+private fun ImportVaultDialog(
+    initialName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String, String) -> Unit
+) {
     var password by remember { mutableStateOf("") }
-    var name by remember { mutableStateOf("导入的密码库") }
+    var name by remember { mutableStateOf(initialName) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("导入加密保险库") },
         text = {
             Column {
+                PasswordField(password, { password = it }, "原数据库主密码")
+                Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("新密码库名称") },
+                    label = { Text("新密码库名称（可留空）") },
                     singleLine = true,
                     colors = safeFieldColors(),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(8.dp))
-                PasswordField(password, { password = it }, "原数据库主密码")
-                Spacer(Modifier.height(8.dp))
                 Text(
-                    "导入会新增一个密码库，不会覆盖现有密码库；主密码沿用原数据库的，导入后可在这里改名。",
+                    "导入会新增一个密码库，不会覆盖现有密码库；留空则按文件名命名，导入后也可以改名。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -535,7 +540,7 @@ private fun ImportVaultDialog(onDismiss: () -> Unit, onConfirm: (String, String)
         confirmButton = {
             TextButton(
                 onClick = { onConfirm(password, name) },
-                enabled = password.isNotBlank() && name.isNotBlank()
+                enabled = password.isNotBlank()
             ) { Text("导入") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
