@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.yaoahos.safepassword.android.MainActivity
+import com.yaoahos.safepassword.android.security.BiometricHelper
 import com.yaoahos.safepassword.android.ui.theme.SafePasswordTheme
 import com.yaoahos.safepassword.android.update.ApkInstaller
 import com.yaoahos.safepassword.core.sync.ConflictStrategy
@@ -246,7 +247,39 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                     ChangelogDialog(
                         notes = state.changelog,
                         checking = state.updateChecking,
-                        onDismiss = { viewModel.dismissChangelog() }
+                        onDismiss = { viewModel.dismissChangelog() },
+                        onOpenReleases = { viewModel.openReleasesPage() }
+                    )
+                }
+
+                if (state.fingerprintPrompt) {
+                    AlertDialog(
+                        onDismissRequest = { viewModel.dismissFingerprintPrompt() },
+                        title = { Text("开启指纹解锁？") },
+                        text = {
+                            Text("以后可以用系统指纹快速解锁这个密码库，主密码仍然可以随时使用。")
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                val cipher = viewModel.prepareFingerprintEnrollment()
+                                viewModel.dismissFingerprintPrompt()
+                                if (cipher == null) {
+                                    viewModel.showError("系统安全存储不可用，无法开启指纹解锁")
+                                } else {
+                                    BiometricHelper.authenticate(
+                                        activity,
+                                        cipher,
+                                        onSuccess = { authenticated ->
+                                            viewModel.enableFingerprint(authenticated)
+                                        },
+                                        onFailure = { _, message -> viewModel.showError(message) }
+                                    )
+                                }
+                            }) { Text("开启") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { viewModel.dismissFingerprintPrompt() }) { Text("以后再说") }
+                        }
                     )
                 }
 

@@ -429,7 +429,7 @@ fun ItemViewScreen(viewModel: AppViewModel, state: AppUiState, itemId: String) {
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        "已创建：${detailDate(item.createdAt)}",
+                        "创建时间：${detailDate(item.createdAt)}",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

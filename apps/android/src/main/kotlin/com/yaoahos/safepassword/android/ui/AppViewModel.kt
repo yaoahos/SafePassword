@@ -165,6 +165,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         filterLabelId = defaultLabelIdFor(opened.vault),
                         security = SecurityAnalyzer.analyze(opened.vault),
                         biometricSaved = false,
+                        fingerprintPrompt = it.fingerprintAvailable &&
+                            !container.settings.settings.fingerprintEnabled,
                         message = "密码库已创建"
                     )
                 }
@@ -1199,60 +1201,73 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 var importedCount = 0
                 var importedLabels = 0
-                var failedFiles = 0
+                val failures = mutableListOf<String>()
                 uris.forEach { uri ->
-                    val text = try {
+                    val label = queryDisplayName(uri) ?: "所选文件"
+                    val text = runCatching {
                         app.contentResolver.openInputStream(uri)?.use { input ->
                             input.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                        } ?: error("无法读取文件")
-                    } catch (e: Exception) {
-                        failedFiles++
+                        } ?: error("无法读取")
+                    }.getOrElse {
+                        failures += "$label：无法读取该文件"
                         return@forEach
                     }
-                    try {
-                        if (SafeInCloudXml.looksLikeXml(text)) {
-                            val cards = SafeInCloudXml.parse(text)
+                    when {
+                        SafeInCloudXml.looksLikeXml(text) -> {
+                            val cards = runCatching { SafeInCloudXml.parse(text) }.getOrNull()
+                            if (cards == null) {
+                                failures += "$label：XML 格式不正确，仅支持原版 SafeInCloud 导出的 XML"
+                                return@forEach
+                            }
                             if (cards.isEmpty()) {
-                                failedFiles++
+                                failures += "$label：XML 里没有可导入的条目"
                                 return@forEach
                             }
                             val result = mergeSafeInCloudCards(session.vault, cards)
                             importedCount += result.first
                             importedLabels += result.second
-                        } else {
+                        }
+
+                        text.trimStart().startsWith("{") || text.trimStart().startsWith("[") -> {
                             val importedVault = runCatching { VaultCodec.fromJson(text) }.getOrNull()
-                            val items = if (importedVault != null) {
-                                importedVault.items.map { item ->
-                                    item.copy(
-                                        id = newId(),
-                                        fields = item.fields.map { it.copy(id = newId()) }.toMutableList(),
-                                    )
-                                }
-                            } else {
-                                VaultCodec.itemsFromCsv(text)
+                            if (importedVault == null) {
+                                failures += "$label：JSON 格式不正确，应为本应用导出的 JSON"
+                                return@forEach
+                            }
+                            val items = importedVault.items.map { item ->
+                                item.copy(
+                                    id = newId(),
+                                    fields = item.fields.map { it.copy(id = newId()) }.toMutableList(),
+                                )
                             }
                             if (items.isEmpty()) {
-                                failedFiles++
+                                failures += "$label：JSON 里没有可导入的条目"
                                 return@forEach
                             }
                             session.vault.items.addAll(items)
                             importedCount += items.size
-                            if (importedVault != null) {
-                                importedVault.labels.forEach { label ->
-                                    if (session.vault.labels.none { existing -> existing.name == label.name }) {
-                                        session.vault.labels.add(label.copy(id = newId()))
-                                        importedLabels++
-                                    }
+                            importedVault.labels.forEach { importedLabel ->
+                                if (session.vault.labels.none { existing -> existing.name == importedLabel.name }) {
+                                    session.vault.labels.add(importedLabel.copy(id = newId()))
+                                    importedLabels++
                                 }
                             }
                         }
-                    } catch (e: Exception) {
-                        failedFiles++
+
+                        else -> {
+                            val items = runCatching { VaultCodec.itemsFromCsv(text) }.getOrDefault(emptyList())
+                            if (items.isEmpty()) {
+                                failures += "$label：无法识别，支持本应用导出的 JSON / CSV 或原版 SafeInCloud XML"
+                                return@forEach
+                            }
+                            session.vault.items.addAll(items)
+                            importedCount += items.size
+                        }
                     }
                 }
 
                 if (importedCount == 0) {
-                    error(if (failedFiles > 0) "没有识别到可导入的条目（$failedFiles 个文件无法识别）" else "没有识别到可导入的条目")
+                    error(failures.firstOrNull() ?: "没有识别到可导入的条目")
                 }
 
                 session.vault.touch()
@@ -1265,7 +1280,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         message = buildString {
                             append("已导入 $importedCount 条")
                             if (importedLabels > 0) append("，新增 $importedLabels 个标签")
-                            if (failedFiles > 0) append("，$failedFiles 个文件失败")
+                            if (failures.isNotEmpty()) append("，${failures.size} 个文件未导入")
                         }
                     )
                 }
@@ -1276,17 +1291,42 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun queryDisplayName(uri: Uri): String? = runCatching {
+        app.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+    }.getOrNull()
+
     fun importEncrypted(uri: Uri, password: String, name: String) {
-        if (password.isBlank()) {
-            fail("请输入该数据库的主密码")
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) {
+            fail("请输入密码库名称")
+            return
+        }
+        if (trimmed.length > 40) {
+            fail("密码库名称不能超过 40 个字符")
+            return
+        }
+        // 导入是「新增一个库」，不是覆盖当前库；同名会让两个库难以区分，直接拒绝。
+        if (_state.value.vaults.any { it.name.equals(trimmed, ignoreCase = true) }) {
+            fail("本地已有名为「$trimmed」的密码库，请换个名称（导入不会覆盖原库）")
+            return
+        }
+        if (password.length < 8) {
+            fail("请输入该密码库的主密码（至少 8 位）")
             return
         }
         _state.update { it.copy(busy = true, error = null) }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val bytes = app.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    ?: error("无法读取文件")
-                val (opened, meta) = container.vaultStore.importEncrypted(bytes, password.toCharArray(), name)
+                    ?: error("无法读取文件，请重新选择")
+                val (opened, meta) = try {
+                    container.vaultStore.importEncrypted(bytes, password.toCharArray(), trimmed)
+                } catch (e: WrongPasswordException) {
+                    throw IllegalStateException("主密码不正确，或该文件不是本应用导出的加密密码库")
+                } catch (e: Exception) {
+                    throw IllegalStateException("无法读取该密码库文件，请确认是本应用导出的 .spv 文件")
+                }
                 container.settings.lastVaultId = meta.id
                 attach(opened, meta, password)
                 _state.update {
@@ -1298,7 +1338,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         screen = Screen.Vault,
                         busy = false,
                         security = SecurityAnalyzer.analyze(opened.vault),
-                        message = "已导入保险库"
+                        fingerprintPrompt = it.fingerprintAvailable &&
+                            !container.settings.settings.fingerprintEnabled,
+                        message = "已导入密码库「${meta.name}」"
                     )
                 }
             } catch (e: Exception) {
@@ -1307,10 +1349,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * 列出云端已有的密码库，供「从云端恢复」时选择。
-     * 优先读云端清单；清单缺失（老版本上传的库）时退回探测旧版单文件。
-     */
     fun loadCloudVaults(config: WebDavConfig) {
         if (!config.isConfigured()) {
             fail("请先填写 WebDAV 服务器地址")
@@ -1400,6 +1438,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         busy = false,
                         syncStatus = "",
                         security = SecurityAnalyzer.analyze(opened.vault),
+                        fingerprintPrompt = it.fingerprintAvailable &&
+                            !container.settings.settings.fingerprintEnabled,
                         message = "已从云端恢复「${meta.name}」"
                     )
                 }
@@ -1476,7 +1516,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val releases = GitHubUpdater.fetchReleases()
-                val notes = GitHubUpdater.releaseNotes(releases, limit = 6)
+                val notes = GitHubUpdater.releaseNotes(releases, limit = MAX_CHANGELOG_VERSIONS)
                 val published = releases.filter { !it.draft && !it.prerelease && it.tagName.isNotBlank() }
                 val latest = published.firstOrNull { release ->
                     release.assets.any { asset -> asset.name.endsWith(".apk", ignoreCase = true) }
@@ -1574,9 +1614,32 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _state.update {
             it.copy(changelog = local.ifEmpty { it.changelog }, showChangelog = true)
         }
+        // 云端最多 50 个版本，拉到后合并：远端优先，本地独有的（还没发版）接在后面。
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val remote = GitHubUpdater.releaseNotes(GitHubUpdater.fetchReleases(), limit = MAX_CHANGELOG_VERSIONS)
+                if (remote.isEmpty()) return@runCatching
+                val known = remote.map { it.version }.toSet()
+                val merged = remote + local.filter { it.version.isNotBlank() && it.version !in known }
+                _state.update { if (it.showChangelog) it.copy(changelog = merged) else it }
+            }
+        }
     }
 
     fun dismissChangelog() = _state.update { it.copy(showChangelog = false) }
+
+    fun dismissFingerprintPrompt() = _state.update { it.copy(fingerprintPrompt = false) }
+
+    /** 打开 GitHub Releases 页面，用于查看 50 版之前的更新日志。 */
+    fun openReleasesPage() {
+        runCatching {
+            val intent = android.content.Intent(
+                android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse(GitHubUpdater.RELEASES_PAGE)
+            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            app.startActivity(intent)
+        }.onFailure { showMessage("没有可用的浏览器") }
+    }
 
     // ---------------------------------------------------------------- lifecycle
 
@@ -1644,6 +1707,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 it.copy(settings = updated, backups = container.backupStore.list(updated.backupTreeUri))
             }
         }
+    }
+
+    private companion object {
+        /** 应用内最多展示 50 个版本的更新日志，更早的去 GitHub Releases 看。 */
+        const val MAX_CHANGELOG_VERSIONS = 50
     }
 
     private fun fail(e: Throwable) {

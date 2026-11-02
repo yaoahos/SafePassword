@@ -45,6 +45,8 @@ data class AppUiState(
     val cloudVaultsLoading: Boolean = false,
     val fingerprintAvailable: Boolean = false,
     val biometricSaved: Boolean = false,
+    /** 新建/导入密码库后，提示用户开启指纹解锁。 */
+    val fingerprintPrompt: Boolean = false,
     val dataVersion: Long = 0,
     // ---- 检查更新 / 自更新 ----
     val updateChecking: Boolean = false,
