@@ -319,7 +319,7 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
                 )
                 SettingRow(
                     title = "导入加密保险库",
-                    subtitle = "需要原数据库主密码",
+                    subtitle = "新增一个密码库，不覆盖现有的；需要原数据库主密码",
                     onClick = { importVault.launch(arrayOf("application/octet-stream", "*/*")) },
                     trailing = { Icon(Icons.Outlined.Upload, contentDescription = null) }
                 )
@@ -526,7 +526,7 @@ private fun ImportVaultDialog(onDismiss: () -> Unit, onConfirm: (String, String)
                 PasswordField(password, { password = it }, "原数据库主密码")
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "导入后会用同一个主密码重新加密为新的数据库。附件不会随加密库导入。",
+                    "导入会新增一个密码库，不会覆盖现有密码库；主密码沿用原数据库的，导入后可在这里改名。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

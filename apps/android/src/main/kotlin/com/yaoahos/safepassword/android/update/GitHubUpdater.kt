@@ -31,7 +31,7 @@ object GitHubUpdater {
     const val REPO = "yaoahos/SafePassword"
     const val RELEASES_PAGE = "https://github.com/$REPO/releases"
 
-    private const val RELEASES_API = "https://api.github.com/repos/$REPO/releases?per_page=20"
+    private const val RELEASES_API = "https://api.github.com/repos/$REPO/releases?per_page=50"
     private const val USER_AGENT = "SafePassword-Android"
 
     private val json = Json {

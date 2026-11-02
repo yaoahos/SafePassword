@@ -82,12 +82,13 @@ fun UpdateReadyDialog(
     )
 }
 
-/** 更新日志对话框，列出最近若干个正式版本。 */
+/** 更新日志对话框，列出最近若干个正式版本；每版内容完整显示。 */
 @Composable
 fun ChangelogDialog(
     notes: List<ReleaseNote>,
     checking: Boolean,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onOpenReleases: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -116,7 +117,8 @@ fun ChangelogDialog(
                         ).joinToString("    ")
                         Text(heading, style = MaterialTheme.typography.titleSmall)
                         Spacer(Modifier.height(6.dp))
-                        val bullets = conciseNotes(note.notes, limit = 5)
+                        // 完整显示，不再只截前几条。
+                        val bullets = conciseNotes(note.notes, limit = Int.MAX_VALUE)
                         if (bullets.isEmpty()) {
                             Text(
                                 "问题修复与稳定性优化。",
@@ -130,6 +132,8 @@ fun ChangelogDialog(
                             }
                         }
                     }
+                    Spacer(Modifier.height(10.dp))
+                    TextButton(onClick = onOpenReleases) { Text("查看更早的版本") }
                 }
             }
         },
