@@ -1442,7 +1442,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
             } catch (e: Exception) {
-                fail(e.message ?: "泄露检查失败")
+                fail(networkErrorText(e, "检查失败，请稍后重试"))
             } finally {
                 client.close()
             }
@@ -1648,6 +1648,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun fail(e: Throwable) {
         fail(e.message ?: "操作失败")
+    }
+
+    /**
+     * 把底层异常翻译成一句人话。
+     *
+     * 直接把 `e.message` 弹给用户会看到 "java.net.SocketTimeoutException: timeout"
+     * 这类信息，普通用户读不懂也做不了什么；网络类异常统一按「超时 / 连不上」两类提示。
+     */
+    private fun networkErrorText(e: Throwable, fallback: String): String {
+        var current: Throwable? = e
+        var guard = 0
+        while (current != null && guard < 8) {
+            val name = current.javaClass.simpleName
+            when {
+                name.contains("Timeout", ignoreCase = true) ->
+                    return "网络连接超时，请检查网络后重试"
+                name.contains("UnknownHost", ignoreCase = true) ||
+                    name.contains("Connect", ignoreCase = true) ->
+                    return "无法连接服务器，请检查网络后重试"
+            }
+            current = current.cause?.takeUnless { it === current }
+            guard++
+        }
+        return fallback
     }
 
     private fun fail(message: String) {
