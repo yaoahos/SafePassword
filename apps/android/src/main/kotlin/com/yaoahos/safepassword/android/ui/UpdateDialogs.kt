@@ -111,9 +111,11 @@ fun ChangelogDialog(
                             HorizontalDivider(Modifier.height(1.dp))
                             Spacer(Modifier.height(12.dp))
                         }
-                        // 只显示版本号：日期加版本会和新版发布说明里的日期行重复，看着像两条一样的。
-                        val heading = note.version.takeIf { it.isNotBlank() }?.let { "v$it" }
-                            ?: note.date.ifBlank { "更新" }
+                        // 与 GitHub 发布说明/README 一致的「日期 + 版本号」格式。
+                        val heading = listOfNotNull(
+                            note.date.takeIf { it.isNotBlank() },
+                            note.version.takeIf { it.isNotBlank() }?.let { "v$it" }
+                        ).joinToString("    ").ifBlank { "更新" }
                         Text(heading, style = MaterialTheme.typography.titleSmall)
                         Spacer(Modifier.height(6.dp))
                         // 完整显示，不再只截前几条。

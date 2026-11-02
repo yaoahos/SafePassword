@@ -154,6 +154,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val (opened, meta) = container.vaultStore.create(trimmed, password.toCharArray())
                 container.settings.lastVaultId = meta.id
                 attach(opened, meta, password)
+                // 新库一开始没有指纹凭据，开关先归零；下面会提示用户是否开启。
+                val saved = applyFingerprintState(meta.id)
                 _state.update {
                     it.copy(
                         vaults = container.vaultStore.list(),
@@ -164,9 +166,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         busy = false,
                         filterLabelId = defaultLabelIdFor(opened.vault),
                         security = SecurityAnalyzer.analyze(opened.vault),
-                        biometricSaved = false,
-                        fingerprintPrompt = it.fingerprintAvailable &&
-                            !container.settings.settings.fingerprintEnabled,
+                        fingerprintPrompt = it.fingerprintAvailable && !saved,
+                        biometricSaved = saved,
                         message = "密码库已创建"
                     )
                 }
@@ -202,6 +203,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 attach(opened, updatedMeta, password)
                 failedAttempts = 0
                 lockedUntil = 0
+                val saved = applyFingerprintState(meta.id)
                 _state.update {
                     it.copy(
                         vaults = container.vaultStore.list(),
@@ -212,7 +214,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         busy = false,
                         filterLabelId = defaultLabelIdFor(opened.vault),
                         security = SecurityAnalyzer.analyze(opened.vault),
-                        biometricSaved = container.biometric.has(meta.id),
+                        biometricSaved = saved,
+                        settings = container.settings.settings,
                         error = null
                     )
                 }
@@ -294,17 +297,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteVault(meta: VaultMeta) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // 这个库的指纹凭据随库一起删掉；如果它是当前启用的指纹来源，
-                // 指纹开关也必须关掉，否则解锁页会显示一个永远用不了的指纹按钮。
-                val hadFingerprint = container.biometric.has(meta.id)
+                // 只清掉这个库自己的指纹凭据。指纹开关随后按「切到的那个库有没有凭据」重算：
+                // 删库后自动切到另一个本来就有指纹的库时，开关保持开启，不需要重新验证。
                 container.vaultStore.delete(meta)
                 container.biometric.clear(meta.id)
-                var settings = container.settings.settings
-                if (hadFingerprint && settings.fingerprintEnabled) {
-                    settings = settings.copy(fingerprintEnabled = false, biometricEnabled = false)
-                    container.settings.settings = settings
-                }
                 val remaining = container.vaultStore.list()
+                val next = remaining.firstOrNull()
+                val saved = applyFingerprintState(next?.id)
                 if (_state.value.activeMeta?.id == meta.id) {
                     active = null
                     masterPassword = null
@@ -312,22 +311,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         it.copy(
                             activeVault = null,
                             // 只剩一个库时直接选中它，避免解锁页停在「选择密码库」却无从选择。
-                            activeMeta = remaining.firstOrNull(),
+                            activeMeta = next,
                             unlocked = false,
                             screen = Screen.Unlock,
                             vaults = remaining,
-                            settings = settings,
-                            biometricSaved = false,
-                            message = if (hadFingerprint && !settings.fingerprintEnabled) {
-                                "密码库已删除，指纹解锁已关闭"
-                            } else {
-                                "密码库已删除"
-                            }
+                            settings = container.settings.settings,
+                            biometricSaved = saved,
+                            message = "密码库已删除"
                         )
                     }
                 } else {
                     _state.update {
-                        it.copy(vaults = remaining, settings = settings, message = "密码库已删除")
+                        it.copy(
+                            vaults = remaining,
+                            settings = container.settings.settings,
+                            biometricSaved = saved,
+                            message = "密码库已删除"
+                        )
                     }
                 }
             } catch (e: Exception) {
@@ -686,7 +686,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 unlocked = false,
                 activeVault = null,
                 screen = Screen.Unlock,
-                biometricSaved = container.biometric.has(meta.id)
+                biometricSaved = applyFingerprintState(meta.id),
+                settings = container.settings.settings
             )
         }
     }
@@ -1345,6 +1346,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 container.settings.lastVaultId = meta.id
                 attach(opened, meta, password)
+                // 新库一开始没有指纹凭据，开关先归零；下面会提示用户是否开启。
+                val saved = applyFingerprintState(meta.id)
                 _state.update {
                     it.copy(
                         vaults = container.vaultStore.list(),
@@ -1354,8 +1357,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         screen = Screen.Vault,
                         busy = false,
                         security = SecurityAnalyzer.analyze(opened.vault),
-                        fingerprintPrompt = it.fingerprintAvailable &&
-                            !container.settings.settings.fingerprintEnabled,
+                        fingerprintPrompt = it.fingerprintAvailable && !saved,
+                        biometricSaved = saved,
                         message = "已导入密码库「${meta.name}」"
                     )
                 }
@@ -1444,6 +1447,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val (opened, meta) = container.vaultStore.importEncrypted(bytes, password.toCharArray(), trimmedName)
                 container.settings.lastVaultId = meta.id
                 attach(opened, meta, password)
+                // 新库一开始没有指纹凭据，开关先归零；下面会提示用户是否开启。
+                val saved = applyFingerprintState(meta.id)
                 _state.update {
                     it.copy(
                         vaults = container.vaultStore.list(),
@@ -1454,8 +1459,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         busy = false,
                         syncStatus = "",
                         security = SecurityAnalyzer.analyze(opened.vault),
-                        fingerprintPrompt = it.fingerprintAvailable &&
-                            !container.settings.settings.fingerprintEnabled,
+                        fingerprintPrompt = it.fingerprintAvailable && !saved,
+                        biometricSaved = saved,
                         message = "已从云端恢复「${meta.name}」"
                     )
                 }
@@ -1769,6 +1774,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private companion object {
         /** 应用内最多展示 50 个版本的更新日志，更早的去 GitHub Releases 看。 */
         const val MAX_CHANGELOG_VERSIONS = 50
+    }
+
+    /**
+     * 指纹开关跟着「当前密码库有没有凭据」走。
+     *
+     * 每个库的指纹凭据互相独立：切到另一个没有凭据的库时开关自动变关，
+     * 用主密码解锁后可以再开启；而删库后自动切到的库如果本来就有凭据，开关保持开启。
+     */
+    private fun applyFingerprintState(metaId: String?): Boolean {
+        val saved = metaId != null && container.biometric.has(metaId)
+        val settings = container.settings.settings
+        if (settings.fingerprintEnabled != saved) {
+            container.settings.settings = settings.copy(
+                fingerprintEnabled = saved,
+                biometricEnabled = saved
+            )
+        }
+        return saved
     }
 
     private fun fail(e: Throwable) {
