@@ -8,8 +8,8 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
 - 正式 APK：`SafePassword-1.4.2-release.apk`
-- APK 大小：2,609,138 字节
-- SHA-256：`22636B6E0B4FA4F8EBFA13E00235603C21F265A428514AFB878BBBEE45E44E55`
+- APK 大小：2,609,262 字节
+- SHA-256：`FADB13A4B148D8F498D3D727B59E5CBB18F810B7B112E72D6523A67AC74AB643`
 - 发布下载：[Releases · v1.4.2](https://github.com/yaoahos/SafePassword/releases/tag/v1.4.2)
 
 > 本项目是独立实现，与 SafeInCloud 官方无关联，也未使用其源代码。界面与交互仅作为设计参考；SafeInCloud 名称及相关权益归其权利人所有。
@@ -362,6 +362,9 @@ Gradle 模块路径：
 - 优化 导出文件默认命名为「密码库名-日期-时间」
 - 变更 移除密码条目附件功能
 - 修复 快速连续收藏时误报「自动同步失败：C was canceled」
+- 优化 标签颜色预置 20 种，并支持输入 #RRGGBB 自定义
+- 优化 工具页「安全检查」更名为「安全中心」；设置项「管理密码库」统一为「密码库管理」
+- 优化 安全中心检查失败时提示网络超时或无法连接
 
 **2026/11/01 · 1.4.1**
 - 变更 安装包标识改为 com.yaoahos.safepassword，与历史版本互不影响

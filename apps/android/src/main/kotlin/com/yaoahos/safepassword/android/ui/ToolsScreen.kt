@@ -91,7 +91,7 @@ fun ToolsScreen(viewModel: AppViewModel, state: AppUiState) {
 
     val tools = listOf(
         ToolEntry(Icons.Outlined.Password, MaterialTheme.colorScheme.primary, "密码生成器", "生成强随机密码或口令短语") { showGenerator = true },
-        ToolEntry(Icons.Outlined.Security, Color(0xFFFF3B30), "安全检查", "${state.security.breached.size + state.security.weak.size + state.security.reused.size} 个风险等待处理") {
+        ToolEntry(Icons.Outlined.Security, Color(0xFFFF3B30), "安全中心", "${state.security.breached.size + state.security.weak.size + state.security.reused.size} 个风险等待处理") {
             viewModel.navigate(Screen.Security)
         },
         ToolEntry(Icons.Outlined.Cloud, Color(0xFF30B0C7), "WebDAV 同步", if (state.webDav.isConfigured()) "已连接 · 点击配置" else "未配置") {

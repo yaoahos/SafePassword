@@ -73,12 +73,11 @@ import androidx.compose.ui.window.DialogProperties
 import com.yaoahos.safepassword.core.model.Label
 
 private val labelPalette = listOf(
-    0xFF1E88E5.toInt(), 0xFF3949AB.toInt(), 0xFF00897B.toInt(), 0xFF43A047.toInt(),
-    0xFF7CB342.toInt(), 0xFFFDD835.toInt(), 0xFFFB8C00.toInt(), 0xFFF4511E.toInt(),
-    0xFFE53935.toInt(), 0xFFD81B60.toInt(), 0xFF8E24AA.toInt(), 0xFF5E35B1.toInt(),
-    0xFF6D4C41.toInt(), 0xFF546E7A.toInt(), 0xFF00ACC1.toInt(), 0xFF26A69A.toInt(),
-    0xFF66BB6A.toInt(), 0xFF9CCC65.toInt(), 0xFFFFB300.toInt(), 0xFFFF7043.toInt(),
-    0xFFEF5350.toInt(), 0xFFEC407A.toInt(), 0xFFAB47BC.toInt(), 0xFF7E57C2.toInt()
+    0xFF1E88E5.toInt(), 0xFF3949AB.toInt(), 0xFF5E35B1.toInt(), 0xFF8E24AA.toInt(),
+    0xFFD81B60.toInt(), 0xFFE53935.toInt(), 0xFFF4511E.toInt(), 0xFFFB8C00.toInt(),
+    0xFFFFB300.toInt(), 0xFFFDD835.toInt(), 0xFF7CB342.toInt(), 0xFF43A047.toInt(),
+    0xFF00897B.toInt(), 0xFF00ACC1.toInt(), 0xFF26A69A.toInt(), 0xFF66BB6A.toInt(),
+    0xFFEF5350.toInt(), 0xFFEC407A.toInt(), 0xFF546E7A.toInt(), 0xFF6D4C41.toInt()
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -435,14 +434,15 @@ internal fun LabelEditDialog(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        LabelGlyph(color = Color(color), size = 28.dp)
+                        Spacer(Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("颜色", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(4.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                LabelGlyph(color = Color(color), size = 28.dp)
-                                Spacer(Modifier.width(10.dp))
-                                Text("标签颜色", fontSize = 15.sp)
-                            }
+                            Text("标签颜色", fontSize = 15.sp)
+                            Text(
+                                String.format(java.util.Locale.US, "#%06X", color and 0xFFFFFF),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         TextButton(onClick = { showColorPicker = true }) {
                             Text("选择颜色")
@@ -502,6 +502,8 @@ private fun LabelColorPickerDialog(
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var customHex by remember { mutableStateOf("") }
+    var invalid by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier.width(360.dp),
@@ -514,7 +516,7 @@ private fun LabelColorPickerDialog(
                 Spacer(Modifier.height(18.dp))
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(5),
-                    modifier = Modifier.height(300.dp),
+                    modifier = Modifier.height(260.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
@@ -536,10 +538,53 @@ private fun LabelColorPickerDialog(
                         }
                     }
                 }
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "自定义颜色",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(
+                                parseLabelHex(customHex)?.let { Color(it) }
+                                    ?: MaterialTheme.colorScheme.surfaceVariant
+                            )
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    OutlinedTextField(
+                        value = customHex,
+                        onValueChange = {
+                            customHex = it.take(7)
+                            invalid = false
+                        },
+                        placeholder = { Text("#2563EB") },
+                        singleLine = true,
+                        isError = invalid,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = {
+                        val parsed = parseLabelHex(customHex)
+                        if (parsed == null) invalid = true else onSelect(parsed)
+                    }) { Text("应用") }
+                }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text("取消", fontSize = 17.sp) }
                 }
             }
         }
     }
+}
+
+private fun parseLabelHex(input: String): Int? {
+    val cleaned = input.trim().removePrefix("#")
+    if (cleaned.length != 6) return null
+    val rgb = cleaned.toLongOrNull(16) ?: return null
+    return (0xFF000000L or rgb).toInt()
 }

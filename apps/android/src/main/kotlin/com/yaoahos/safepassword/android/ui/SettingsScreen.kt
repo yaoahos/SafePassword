@@ -253,7 +253,7 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
 
             SectionCard(title = "密码库") {
                 SettingRow(
-                    title = "管理密码库",
+                    title = "密码库管理",
                     subtitle = "新建、切换、重命名或删除",
                     onClick = { viewModel.navigate(Screen.VaultManager) },
                     trailing = { Icon(Icons.Outlined.Folder, contentDescription = null) }
