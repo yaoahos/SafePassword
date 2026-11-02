@@ -278,6 +278,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             fail("名称不能为空")
             return
         }
+        if (trimmed.length > 40) {
+            fail("密码库名称不能超过 40 个字符")
+            return
+        }
+        if (_state.value.vaults.any { it.id != meta.id && it.name.equals(trimmed, ignoreCase = true) }) {
+            fail("本地已有名为「$trimmed」的密码库，请换一个名称")
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 session.vault.name = trimmed
@@ -288,6 +296,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update {
                     it.copy(activeMeta = updated, vaults = container.vaultStore.list(), message = "已重命名")
                 }
+                // 库名是同步内容的一部分（云端清单也会更新名字），
+                // 不推一次的话另一台设备看到的还是旧名字。
+                scheduleSync()
             } catch (e: Exception) {
                 fail(e)
             }
@@ -905,7 +916,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val client = WebDavClient(config, OkHttp.create())
             try {
-                val result = SyncEngine(client, config, session.vault.name)
+                val result = SyncEngine(client, config)
                     .pullRemote(session, password.toCharArray())
                 active = result.container
                 val updatedMeta = meta.copy(
@@ -992,7 +1003,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val config = _state.value.webDav
         if (!config.isConfigured()) return
         if (_state.value.busy || _state.value.syncConflict) return
-        val remotePath = config.remotePath(CloudManifest.keyFor(session.vault.name))
+        val remoteKey = session.vault.cloudKey.ifBlank { CloudManifest.keyFor(session.vault.name) }
+            val remotePath = config.remotePath(remoteKey)
         val client = WebDavClient(config, OkHttp.create())
         try {
             val stat = client.stat(remotePath) ?: client.stat(config.legacyRemotePath()) ?: return
@@ -1032,7 +1044,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         val client = WebDavClient(config, OkHttp.create())
         try {
-            val result = SyncEngine(client, config, session.vault.name)
+            val result = SyncEngine(client, config)
                 .sync(session, password.toCharArray(), strategy)
             if (result.direction == SyncDirection.CONFLICT) {
                 _state.update {
@@ -1455,6 +1467,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val path = if (key.isBlank()) config.legacyRemotePath() else config.remotePath(key)
                 val bytes = client.get(path) ?: error("云端没有找到这个密码库的文件，可能已被删除")
                 val (opened, meta) = container.vaultStore.importEncrypted(bytes, password.toCharArray(), trimmedName)
+                // 记住这份数据在云端用的是哪个键，之后同步继续读写同一个文件，
+                // 而不是按新库名另建一份。
+                if (key.isNotBlank() && opened.vault.cloudKey.isBlank()) {
+                    opened.vault.cloudKey = key
+                    container.vaultStore.save(opened, meta)
+                }
                 container.settings.lastVaultId = meta.id
                 attach(opened, meta, password)
                 // 新库一开始没有指纹凭据，开关先归零；下面会提示用户是否开启。
