@@ -294,24 +294,40 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteVault(meta: VaultMeta) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // 这个库的指纹凭据随库一起删掉；如果它是当前启用的指纹来源，
+                // 指纹开关也必须关掉，否则解锁页会显示一个永远用不了的指纹按钮。
+                val hadFingerprint = container.biometric.has(meta.id)
                 container.vaultStore.delete(meta)
                 container.biometric.clear(meta.id)
+                var settings = container.settings.settings
+                if (hadFingerprint && settings.fingerprintEnabled) {
+                    settings = settings.copy(fingerprintEnabled = false, biometricEnabled = false)
+                    container.settings.settings = settings
+                }
+                val remaining = container.vaultStore.list()
                 if (_state.value.activeMeta?.id == meta.id) {
                     active = null
                     masterPassword = null
                     _state.update {
                         it.copy(
                             activeVault = null,
-                            activeMeta = null,
+                            // 只剩一个库时直接选中它，避免解锁页停在「选择密码库」却无从选择。
+                            activeMeta = remaining.firstOrNull(),
                             unlocked = false,
                             screen = Screen.Unlock,
-                            vaults = container.vaultStore.list(),
-                            message = "密码库已删除"
+                            vaults = remaining,
+                            settings = settings,
+                            biometricSaved = false,
+                            message = if (hadFingerprint && !settings.fingerprintEnabled) {
+                                "密码库已删除，指纹解锁已关闭"
+                            } else {
+                                "密码库已删除"
+                            }
                         )
                     }
                 } else {
                     _state.update {
-                        it.copy(vaults = container.vaultStore.list(), message = "密码库已删除")
+                        it.copy(vaults = remaining, settings = settings, message = "密码库已删除")
                     }
                 }
             } catch (e: Exception) {
@@ -1629,6 +1645,47 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun dismissChangelog() = _state.update { it.copy(showChangelog = false) }
 
     fun dismissFingerprintPrompt() = _state.update { it.copy(fingerprintPrompt = false) }
+
+    /** 删除云端的某个密码库文件，并把清单里的条目一并去掉。 */
+    fun deleteCloudVault(entry: CloudVaultEntry) {
+        val config = _state.value.webDav
+        if (!config.isConfigured()) {
+            fail("请先配置 WebDAV 服务器")
+            return
+        }
+        _state.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val client = WebDavClient(config, OkHttp.create())
+            try {
+                client.test()
+                if (entry.key.isBlank()) {
+                    client.delete(config.legacyRemotePath())
+                } else {
+                    client.delete(config.remotePath(entry.key))
+                }
+                val manifest = CloudManifest.parse(
+                    client.get(config.manifestPath())?.toString(Charsets.UTF_8)
+                )
+                manifest.remove(entry.key)
+                client.put(
+                    config.manifestPath(),
+                    manifest.toJson().toByteArray(Charsets.UTF_8)
+                )
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        cloudVaults = it.cloudVaults.filterNot { cloud -> cloud.key == entry.key },
+                        message = "已删除云端密码库「${entry.name}」"
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(busy = false) }
+                fail(e.message ?: "删除云端密码库失败")
+            } finally {
+                client.close()
+            }
+        }
+    }
 
     /** 打开 GitHub Releases 页面，用于查看 50 版之前的更新日志。 */
     fun openReleasesPage() {

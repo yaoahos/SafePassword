@@ -111,10 +111,9 @@ fun ChangelogDialog(
                             HorizontalDivider(Modifier.height(1.dp))
                             Spacer(Modifier.height(12.dp))
                         }
-                        val heading = listOfNotNull(
-                            note.date.takeIf { it.isNotBlank() },
-                            note.version.takeIf { it.isNotBlank() }?.let { "v$it" }
-                        ).joinToString("    ")
+                        // 只显示版本号：日期加版本会和新版发布说明里的日期行重复，看着像两条一样的。
+                        val heading = note.version.takeIf { it.isNotBlank() }?.let { "v$it" }
+                            ?: note.date.ifBlank { "更新" }
                         Text(heading, style = MaterialTheme.typography.titleSmall)
                         Spacer(Modifier.height(6.dp))
                         // 完整显示，不再只截前几条。

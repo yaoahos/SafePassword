@@ -49,6 +49,7 @@ fun VaultManagerScreen(viewModel: AppViewModel, state: AppUiState) {
     var showCreate by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<VaultMeta?>(null) }
     var switchTarget by remember { mutableStateOf<CloudVaultEntry?>(null) }
+    var cloudDeleteTarget by remember { mutableStateOf<CloudVaultEntry?>(null) }
     var switchPassword by remember { mutableStateOf("") }
     var switchVisible by remember { mutableStateOf(false) }
     var switchError by remember { mutableStateOf(false) }
@@ -168,6 +169,13 @@ fun VaultManagerScreen(viewModel: AppViewModel, state: AppUiState) {
                                 switchError = false
                                 switchVisible = false
                             }) { Text("切换到") }
+                            IconButton(onClick = { cloudDeleteTarget = entry }) {
+                                Icon(
+                                    Icons.Outlined.Delete,
+                                    contentDescription = "删除云端密码库",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
                     }
                 }
@@ -251,6 +259,19 @@ fun VaultManagerScreen(viewModel: AppViewModel, state: AppUiState) {
                 }) { Text("下载并切换") }
             },
             dismissButton = { TextButton(onClick = { switchTarget = null }) { Text("取消") } }
+        )
+    }
+    cloudDeleteTarget?.let { entry ->
+        ConfirmDialog(
+            title = "删除云端密码库",
+            text = "将从云端删除「${entry.name}」的密码库文件，其他设备将无法再从云端恢复它。本地副本不受影响。",
+            confirmText = "删除",
+            destructive = true,
+            onDismiss = { cloudDeleteTarget = null },
+            onConfirm = {
+                cloudDeleteTarget = null
+                viewModel.deleteCloudVault(entry)
+            }
         )
     }
 }
