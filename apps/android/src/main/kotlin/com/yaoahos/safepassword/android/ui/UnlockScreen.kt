@@ -65,7 +65,8 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun UnlockScreen(viewModel: AppViewModel, state: AppUiState, activity: MainActivity) {
-    val meta = state.activeMeta
+    // 只有一个库时直接选中它；删库后 activeMeta 会为空，否则按钮一直是灰的。
+    val meta = state.activeMeta ?: state.vaults.singleOrNull()
     val focusRequester = remember { FocusRequester() }
     var passwordFocused by remember { mutableStateOf(false) }
     var password by remember(meta?.id) { mutableStateOf("") }

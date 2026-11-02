@@ -28,6 +28,10 @@ data class CloudManifest(
         if (position >= 0) vaults[position] = entry else vaults.add(entry)
     }
 
+    fun remove(key: String) {
+        vaults.removeAll { it.key == key }
+    }
+
     fun toJson(): String = AppJson.instance.encodeToString(serializer(), this)
 
     companion object {
