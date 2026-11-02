@@ -14,7 +14,7 @@ import com.yaoahos.safepassword.android.update.UpdateLog
 import com.yaoahos.safepassword.android.update.UpdateNotifications
 import com.yaoahos.safepassword.core.crypto.VaultContainer
 import com.yaoahos.safepassword.core.crypto.WrongPasswordException
-import com.yaoahos.safepassword.core.io.SafeInCloudXml
+import com.yaoahos.safepassword.core.io.VaultXml
 import com.yaoahos.safepassword.core.io.VaultCodec
 import com.yaoahos.safepassword.core.io.AtomicFiles
 import com.yaoahos.safepassword.core.model.ItemStatus
@@ -1190,9 +1190,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         writeUri(uri, VaultCodec.toCsv(session.vault).toByteArray(Charsets.UTF_8))
     }
 
-    fun exportSafeInCloudXml(uri: Uri) {
+    fun exportVaultXml(uri: Uri) {
         val session = active ?: return
-        writeUri(uri, SafeInCloudXml.export(session.vault).toByteArray(Charsets.UTF_8))
+        writeUri(uri, VaultXml.export(session.vault).toByteArray(Charsets.UTF_8))
     }
 
     private fun writeUri(uri: Uri, bytes: ByteArray) {
@@ -1230,17 +1230,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         return@forEach
                     }
                     when {
-                        SafeInCloudXml.looksLikeXml(text) -> {
-                            val cards = runCatching { SafeInCloudXml.parse(text) }.getOrNull()
+                        VaultXml.looksLikeXml(text) -> {
+                            val cards = runCatching { VaultXml.parse(text) }.getOrNull()
                             if (cards == null) {
-                                failures += "$label：XML 格式不正确，仅支持原版 SafeInCloud 导出的 XML"
+                                failures += "$label：XML 格式不正确，仅支持本应用兼容的 XML"
                                 return@forEach
                             }
                             if (cards.isEmpty()) {
                                 failures += "$label：XML 里没有可导入的条目"
                                 return@forEach
                             }
-                            val result = mergeSafeInCloudCards(session.vault, cards)
+                            val result = mergeXmlCards(session.vault, cards)
                             importedCount += result.first
                             importedLabels += result.second
                         }
@@ -1274,7 +1274,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         else -> {
                             val items = runCatching { VaultCodec.itemsFromCsv(text) }.getOrDefault(emptyList())
                             if (items.isEmpty()) {
-                                failures += "$label：无法识别，支持本应用导出的 JSON / CSV 或原版 SafeInCloud XML"
+                                failures += "$label：无法识别，支持本应用导出的 JSON / CSV，或兼容格式的 XML"
                                 return@forEach
                             }
                             session.vault.items.addAll(items)

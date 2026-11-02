@@ -101,7 +101,7 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
     ) { uri -> if (uri != null) viewModel.exportPlain(uri) }
     val exportXml = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/xml")
-    ) { uri -> if (uri != null) viewModel.exportSafeInCloudXml(uri) }
+    ) { uri -> if (uri != null) viewModel.exportVaultXml(uri) }
     val exportCsv = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/csv")
     ) { uri -> if (uri != null) viewModel.exportCsv(uri) }
@@ -313,7 +313,7 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
             SectionCard(title = "导入与导出") {
                 SettingRow(
                     title = "导入 JSON / CSV / XML",
-                    subtitle = "支持 .json / .csv / .xml / .txt；XML 兼容原版 SafeInCloud 导出",
+                    subtitle = "支持 .json / .csv / .xml / .txt；XML 兼容原版密码库导出",
                     onClick = { importData.launch(arrayOf("*/*")) },
                     trailing = { Icon(Icons.Outlined.Upload, contentDescription = null) }
                 )
@@ -337,7 +337,7 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
                 )
                 SettingRow(
                     title = "导出 XML",
-                    subtitle = "可还原到原版 SafeInCloud",
+                    subtitle = "可在支持该格式的应用中打开",
                     onClick = { exportXml.launch(defaultExportName(state, "xml")) },
                     trailing = { Icon(Icons.Outlined.Download, contentDescription = null) }
                 )

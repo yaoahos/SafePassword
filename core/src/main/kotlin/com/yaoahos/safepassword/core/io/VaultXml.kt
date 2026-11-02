@@ -20,28 +20,28 @@ import javax.xml.transform.TransformerFactory
 import javax.xml.transform.dom.DOMSource
 import javax.xml.transform.stream.StreamResult
 
-/** A card parsed from a SafeInCloud XML export, with label names rather than numeric ids. */
-data class SafeInCloudCard(
+/** 从兼容格式的 XML 解析出的条目，标签以名称而非数字 id 表示。 */
+data class XmlCard(
     val item: VaultItem,
     val labelNames: List<String>
 )
 
 /**
- * Parser for the XML format exported by the original SafeInCloud app.
+ * 解析原版密码管理器导出的 XML（兼容格式，根节点为 database）。
  *
  * The format is a flat <database> with <label id=".." name=".."/> entries and
  * <card ...> entries containing <field>, <label_id>, <notes>, <image> and <file>.
  * File attachments are intentionally not stored here; fields, labels, notes,
  * image, URL, favorite and deleted/template flags are preserved.
  */
-object SafeInCloudXml {
+object VaultXml {
     fun looksLikeXml(text: String): Boolean = text.trimStart('\uFEFF', ' ', '\n', '\r', '\t').startsWith("<")
 
-    fun parse(text: String): List<SafeInCloudCard> {
+    fun parse(text: String): List<XmlCard> {
         val document = parseDocument(text)
         val root = document.documentElement ?: error("XML 没有根节点")
         require(root.tagName.equals("database", ignoreCase = true)) {
-            "不是 SafeInCloud 导出的 XML（根节点应为 database）"
+            "不是兼容格式的 XML（根节点应为 database）"
         }
 
         val labels = root.childElements("label").mapNotNull { label ->
@@ -57,7 +57,7 @@ object SafeInCloudXml {
 
     /**
      * Export the active vault in the flat XML format used by the original
-     * SafeInCloud client, so it can be imported there again.
+     * 同类客户端，因此可以再次被导入。
      */
     fun export(vault: Vault): String {
         val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument()
@@ -174,7 +174,7 @@ object SafeInCloudXml {
         }
     }
 
-    private fun parseCard(card: Element, labels: Map<String, String>): SafeInCloudCard? {
+    private fun parseCard(card: Element, labels: Map<String, String>): XmlCard? {
         if (card.attr("template").isTrue() || card.attr("deleted").isTrue()) return null
 
         val title = card.attr("title").trim().ifBlank { "未命名" }
@@ -254,7 +254,7 @@ object SafeInCloudXml {
             },
             iconData = image
         )
-        return SafeInCloudCard(item, labelNames)
+        return XmlCard(item, labelNames)
     }
 
     private fun safeType(type: String, rawName: String): FieldType = when (type) {

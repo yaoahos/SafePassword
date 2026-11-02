@@ -173,7 +173,8 @@ internal fun conciseNotes(raw: String, limit: Int = 6): List<String> =
                 line.startsWith("支持系统") ||
                 line.startsWith("certutil")
         }
-        .filterNot { DATE_ONLY.matches(it) }
+        // 发布说明body的第一行通常是「日期 · 版本号」标题，和对话框自己的标题重复，直接丢掉。
+        .filterNot { DATE_ONLY.matches(it) || HEADING_LINE.matches(it) }
         .take(limit)
         .map { if (it.length > 80) it.take(78).trimEnd() + "…" else it }
         .toList()
@@ -185,6 +186,7 @@ private val NOISE_PATTERNS = listOf(
 )
 
 private val DATE_ONLY = Regex("""\d{4}[/-]\d{1,2}[/-]\d{1,2}""")
+private val HEADING_LINE = Regex("""^\d{4}[/-]\d{1,2}[/-]\d{1,2}\s*[·\-—]?\s*v?\d+(?:\.\d+)*$""")
 
 internal fun formatBytes(bytes: Long): String {
     if (bytes <= 0) return "未知"

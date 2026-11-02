@@ -141,7 +141,7 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                                 AnimatedContent(
                                     targetState = state.screen,
                                     transitionSpec = {
-                                        // 参考 Bitwarden / SafeInCloud 的层级切换：
+                                        // 参考主流密码管理器的层级切换：
                                         // 标签页之间只做淡入淡出，进入下一层从右侧滑入，返回上一层反向滑出。
                                         val tabChange = initialState.isTabScreen() && targetState.isTabScreen()
                                         val transform = when {
