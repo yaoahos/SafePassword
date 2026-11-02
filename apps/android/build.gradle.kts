@@ -15,15 +15,15 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
-    namespace = "com.safeincloud.android"
+    namespace = "com.yaoahos.safepassword.android"
     compileSdk = 35
 
     defaultConfig {
         applicationId = "com.yaoahos.safepassword"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.4.1"
+        versionCode = 7
+        versionName = "1.4.2"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -102,6 +102,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.biometric:biometric:1.1.0")

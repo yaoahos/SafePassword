@@ -16,15 +16,15 @@
 -dontwarn com.google.errorprone.annotations.**
 
 # 应用内所有 @Serializable 类：保留 Companion 与生成的 serializer 方法
--keepclassmembers @kotlinx.serialization.Serializable class com.safeincloud.** {
+-keepclassmembers @kotlinx.serialization.Serializable class com.yaoahos.safepassword.** {
     *** Companion;
     kotlinx.serialization.KSerializer serializer(...);
 }
 
 # 生成的 $$serializer 类需完整保留（含其 descriptor 字段）
--keep,includedescriptorclasses class com.safeincloud.**$$serializer { *; }
+-keep,includedescriptorclasses class com.yaoahos.safepassword.**$$serializer { *; }
 
 # 序列化中用到的枚举：保留全部成员，避免 values()/valueOf() 被裁剪
--keepclassmembers enum com.safeincloud.** {
+-keepclassmembers enum com.yaoahos.safepassword.** {
     *;
 }

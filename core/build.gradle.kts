@@ -3,7 +3,7 @@ plugins {
     kotlin("plugin.serialization")
 }
 
-group = "com.safeincloud"
+group = "com.yaoahos.safepassword"
 version = "1.0.0"
 
 kotlin {

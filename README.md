@@ -4,13 +4,13 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 - 项目名：`SafePassword`
 - 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.4.1`（versionCode 6）
+- 正式版本：`1.4.2`（versionCode 7）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`SafePassword-1.4.1-release.apk`
-- APK 大小：2,592,289 字节
-- SHA-256：`E1D2F3C69EAC848B30BCC406E6618A21D9E79ED37E2CDBBC3406338B18421480`
-- 发布下载：[Releases · v1.4.1](https://github.com/yaoahos/SafePassword/releases/tag/v1.4.1)
+- 正式 APK：`SafePassword-1.4.2-release.apk`
+- APK 大小：2,609,138 字节
+- SHA-256：`22636B6E0B4FA4F8EBFA13E00235603C21F265A428514AFB878BBBEE45E44E55`
+- 发布下载：[Releases · v1.4.2](https://github.com/yaoahos/SafePassword/releases/tag/v1.4.2)
 
 > 本项目是独立实现，与 SafeInCloud 官方无关联，也未使用其源代码。界面与交互仅作为设计参考；SafeInCloud 名称及相关权益归其权利人所有。
 
@@ -254,7 +254,7 @@ aapt.exe dump badging dist\SafePassword-1.4.0-release.apk
 **恢复数据**
 
 - 从本地恢复：欢迎页选 `.sicv` 或导出文件 → 输入该文件主密码 → 可改名 → 进入密码库。
-- 从云端恢复：填 WebDAV 地址、用户名、密码、远程目录 → 保存并立即同步 → 先验证主密码 → 下载 `SafePassword.spv` 导入本地。失败会保留配置并提示原因。
+- 从云端恢复：填 WebDAV 地址、用户名、密码、远程目录 → 「读取云端密码库」列出云端已有的库 → 选中一个 → 输入该库的主密码 → 下载并导入本地。失败会保留配置并提示原因。
 
 **日常使用**
 
@@ -264,7 +264,7 @@ aapt.exe dump badging dist\SafePassword-1.4.0-release.apk
 - 搜索：顶部搜索框输入标题、账号或网址；设置中可开启「搜索密码」；搜索框聚焦后侧滑或返回会先清空搜索而不退出页面。
 - 主题：工具 → 主题，预置色为圆形色块，也支持输入 `#RRGGBB` 自定义，可切换深色模式。
 - 同步：工具 → WebDAV 同步，填写服务器地址、用户名、密码和远程目录后先「测试连接」再「保存并立即同步」；多设备用同一远程目录即可共享 `SafePassword.spv`。
-- 备份：工具 → 本地备份，可手动创建加密备份或设置自动备份间隔，恢复时需输入该备份的主密码。
+- 备份：设置 → 本地备份，先选择保存目录（系统文件选择器，可放 SD 卡或网盘同步目录），再创建加密备份或设置自动备份间隔；恢复时需输入该备份的主密码。
 - 导入导出：工具 → 导入密码支持多选 CSV、JSON、SafeInCloud XML；设置 → 数据可导出 CSV、JSON、XML。
 
 **平板与横屏**：内容区限宽，密码库与工具页使用多列布局，顶栏、抽屉、详情和编辑页保持同一套结构，旋转屏幕后页面状态尽量保留。
@@ -279,17 +279,17 @@ aapt.exe dump badging dist\SafePassword-1.4.0-release.apk
 SafePassword/
 ├── apps/
 │   └── android/                Android 应用层（Compose UI、Activity、文件选择器）
-│       ├── src/main/kotlin/com/safeincloud/android/
+│       ├── src/main/kotlin/com/yaoahos/safepassword/android/
 │       │   ├── ui/             页面、组件、主题、导航
 │       │   ├── data/           设置、备份、同步调度
 │       │   ├── security/       生物识别
 │       │   └── MainActivity.kt
 │       └── src/main/res/       图标、字符串、主题资源
 ├── core/                       纯 Kotlin/JVM 共享核心
-│   └── src/main/kotlin/com/safeincloud/core/
+│   └── src/main/kotlin/com/yaoahos/safepassword/core/
 │       ├── crypto/             AES-GCM、PBKDF2、密钥包裹
 │       ├── model/              密码库、条目、标签、字段、模板
-│       ├── storage/            密码库容器、本地存储、备份、附件
+│       ├── storage/            密码库容器、本地存储
 │       ├── io/                 文件读写、导入导出、SafeInCloud XML
 │       ├── sync/               WebDAV、同步引擎、合并策略
 │       ├── json/               序列化配置
@@ -311,8 +311,8 @@ Gradle 模块路径：
 包名说明：
 
 - Android `applicationId`：`com.yaoahos.safepassword`
-- Android 命名空间：`com.safeincloud.android`
-- 核心库包名：`com.safeincloud.core`
+- Android 命名空间：`com.yaoahos.safepassword.android`
+- 核心库包名：`com.yaoahos.safepassword.core`
 
 ---
 
@@ -351,6 +351,17 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/11/02 · 1.4.2**
+- 新增 从云端恢复时先列出云端密码库，选定后再输入主密码
+- 新增 密码库管理页显示云端已有的密码库，切换时才需要主密码
+- 优化 云端文件名改用纯 ID，避免中文文件名在部分云盘上的兼容问题
+- 优化 新建密码库时检查名称长度与本地、云端重名
+- 优化 解锁页当前选中的密码库用主题色标注，其余用普通文字
+- 优化 本地备份默认关闭，开启时可自选保存位置
+- 优化 导出文件默认命名为「密码库名-日期-时间」
+- 变更 移除密码条目附件功能
+- 修复 快速连续收藏时误报「自动同步失败：C was canceled」
 
 **2026/11/01 · 1.4.1**
 - 变更 安装包标识改为 com.yaoahos.safepassword，与历史版本互不影响
