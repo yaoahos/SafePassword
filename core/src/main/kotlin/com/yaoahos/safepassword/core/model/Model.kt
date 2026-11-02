@@ -147,6 +147,8 @@ data class Vault(
     var lastSyncedAt: Long = 0,
     var deviceId: String = newId(),
     var contentKey: String = "",
+    /** 云端文件名用的稳定键：与库名解耦，改名不会换云端文件。空表示尚未分配。 */
+    var cloudKey: String = "",
     var tombstones: MutableList<Tombstone> = mutableListOf()
 ) {
     fun item(id: String): VaultItem? = items.firstOrNull { it.id == id }

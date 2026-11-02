@@ -35,17 +35,28 @@ class SyncException(message: String, cause: Throwable? = null) : Exception(messa
 
 class SyncEngine(
     private val webDav: WebDavClient,
-    private val config: WebDavConfig,
-    vaultName: String
+    private val config: WebDavConfig
 ) {
-    /** 云端文件名里的 ASCII 键；只由库名决定，跨设备稳定，且不含中文。 */
-    private val remoteKey: String = CloudManifest.keyFor(vaultName)
+    /**
+     * 云端文件名的键。
+     *
+     * 键存在密码库自身（随数据一起同步），所以改名只是改显示名，不会换云端文件；
+     * 老库还没有这个键时，先用「按库名」的旧算法认领已有云端文件，之后固定下来。
+     */
+    private fun resolveKey(local: VaultContainer): String {
+        val existing = local.vault.cloudKey
+        if (existing.isNotBlank()) return existing
+        val adopted = CloudManifest.keyFor(local.vault.name)
+        local.vault.cloudKey = adopted
+        return adopted
+    }
 
     /**
      * Force the cloud copy to replace the local vault, regardless of timestamps.
      * Used by the WebDAV screen's explicit “拉取云端数据” action.
      */
     suspend fun pullRemote(local: VaultContainer, password: CharArray): SyncResult {
+        val remoteKey = resolveKey(local)
         val remotePath = config.remotePath(remoteKey)
         val remoteBytes = webDav.get(remotePath)
             ?: webDav.get(config.legacyRemotePath())
@@ -63,7 +74,8 @@ class SyncEngine(
         }
         val downloaded = remote.vault.copy(
             lastSyncedAt = now(),
-            deviceId = local.vault.deviceId
+            deviceId = local.vault.deviceId,
+            cloudKey = remote.vault.cloudKey.ifBlank { remoteKey }
         )
         return SyncResult(
             container = local.withVault(downloaded),
@@ -77,6 +89,7 @@ class SyncEngine(
         password: CharArray,
         conflictStrategy: ConflictStrategy = ConflictStrategy.MERGE
     ): SyncResult {
+        val remoteKey = resolveKey(local)
         val remotePath = config.remotePath(remoteKey)
         var remoteBytes = webDav.get(remotePath)
         var adoptedLegacy: VaultContainer? = null
@@ -139,7 +152,8 @@ class SyncEngine(
             !localChanged && remoteChanged -> {
                 val downloaded = remote.vault.copy(
                     lastSyncedAt = now(),
-                    deviceId = local.vault.deviceId
+                    deviceId = local.vault.deviceId,
+                    cloudKey = remote.vault.cloudKey.ifBlank { remoteKey }
                 )
                 SyncResult(
                     container = local.withVault(downloaded),
@@ -179,7 +193,8 @@ class SyncEngine(
                 if (conflictStrategy == ConflictStrategy.KEEP_REMOTE) {
                     val downloaded = remote.vault.copy(
                         lastSyncedAt = now(),
-                        deviceId = local.vault.deviceId
+                        deviceId = local.vault.deviceId,
+                        cloudKey = remote.vault.cloudKey.ifBlank { remoteKey }
                     )
                     return SyncResult(
                         container = local.withVault(downloaded),
@@ -188,7 +203,17 @@ class SyncEngine(
                     )
                 }
                 val merge = VaultMerger.merge(local.vault, remote.vault, last)
-                val updated = local.withVault(merge.vault)
+                val resolvedName = if (remote.vault.updatedAt > local.vault.updatedAt) {
+                    remote.vault.name
+                } else {
+                    local.vault.name
+                }
+                val updated = local.withVault(
+                    merge.vault.copy(
+                        name = resolvedName,
+                        cloudKey = local.vault.cloudKey.ifBlank { remoteKey }
+                    )
+                )
                 upload(remotePath, updated)
                 SyncResult(
                     container = updated,
@@ -217,7 +242,7 @@ class SyncEngine(
             val manifest = CloudManifest.parse(
                 webDav.get(config.manifestPath())?.toString(Charsets.UTF_8)
             )
-            manifest.upsert(remoteKey, container.vault.name, container.vault.updatedAt, bytes.size.toLong())
+            manifest.upsert(container.vault.cloudKey.ifBlank { CloudManifest.keyFor(container.vault.name) }, container.vault.name, container.vault.updatedAt, bytes.size.toLong())
             webDav.put(config.manifestPath(), manifest.toJson().toByteArray(Charsets.UTF_8))
         }
     }
