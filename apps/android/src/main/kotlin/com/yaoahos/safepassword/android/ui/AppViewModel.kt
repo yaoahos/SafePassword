@@ -1794,6 +1794,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return saved
     }
 
+    /** 把 "1.5.1" 这类版本号折算成可比较的数值，用于日志排序。 */
+    private fun versionRank(version: String): Long {
+        val parts = version.split('.').mapNotNull { it.toIntOrNull() }
+        var rank = 0L
+        repeat(4) { index ->
+            rank = rank * 1000 + (parts.getOrNull(index) ?: 0).coerceIn(0, 999)
+        }
+        return rank
+    }
+
     private fun fail(e: Throwable) {
         fail(e.message ?: "操作失败")
     }
