@@ -708,6 +708,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun setFilterLabel(id: String?) = _state.update { it.copy(filterLabelId = id) }
+    fun setThemeMode(mode: String) = updateSettings { it.copy(themeMode = mode) }
+
     fun setThemeColor(value: Long) = updateSettings { it.copy(themeColor = value) }
     fun setOnlyFavorites(value: Boolean) = _state.update { it.copy(onlyFavorites = value) }
     fun setSearchPasswords(value: Boolean) = updateSettings { it.copy(searchPasswords = value) }

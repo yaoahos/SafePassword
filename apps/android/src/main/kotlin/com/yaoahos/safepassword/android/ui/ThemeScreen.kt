@@ -83,6 +83,42 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
                 .padding(padding)
                 .padding(horizontal = 20.dp)
         ) {
+            Text("外观模式", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(10.dp))
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Row(Modifier.fillMaxWidth().padding(4.dp)) {
+                    listOf(
+                        "SYSTEM" to "跟随系统",
+                        "LIGHT" to "日间",
+                        "DARK" to "夜间"
+                    ).forEach { (mode, label) ->
+                        val selected = state.settings.themeMode == mode
+                        Surface(
+                            shape = RoundedCornerShape(11.dp),
+                            color = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
+                            shadowElevation = if (selected) 1.dp else 0.dp,
+                            modifier = Modifier.weight(1f).clickable { viewModel.setThemeMode(mode) }
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    label,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (selected) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(20.dp))
             Text("预置颜色", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(12.dp))
             LazyVerticalGrid(

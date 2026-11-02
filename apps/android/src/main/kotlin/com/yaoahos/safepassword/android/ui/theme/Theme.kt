@@ -19,11 +19,11 @@ private val DarkSurface = Color(0xFF18181B)
 @Composable
 fun SafePasswordTheme(
     themeColor: Color = DefaultBrand,
+    darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    val dark = isSystemInDarkTheme()
     MaterialTheme(
-        colorScheme = if (dark) darkScheme(themeColor) else lightScheme(themeColor),
+        colorScheme = if (darkTheme) darkScheme(themeColor) else lightScheme(themeColor),
         typography = Typography(),
         content = content
     )

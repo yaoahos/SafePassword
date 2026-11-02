@@ -74,7 +74,7 @@ object GitHubUpdater {
                     version = version,
                     name = release.name.ifBlank { "SafePassword $version" },
                     notes = release.body.trim(),
-                    date = release.publishedAt.take(10)
+                    date = release.publishedAt.take(10).replace('-', '/')
                 )
             }
 
