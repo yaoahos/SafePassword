@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -94,6 +95,7 @@ fun SecurityScreen(viewModel: AppViewModel, state: AppUiState) {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     SecurityGauge(report)
+                    Spacer(Modifier.height(14.dp))
                     Button(
                         onClick = { viewModel.checkBreaches() },
                         enabled = !state.busy,
@@ -177,21 +179,18 @@ private fun SecurityGauge(report: com.yaoahos.safepassword.core.security.Securit
     val total = report.total.coerceAtLeast(1)
     val track = MaterialTheme.colorScheme.surfaceVariant
     Box(
+        // 半圆：宽高比固定 2:1，弧线正好落在框内，不会压到下面的按钮。
         modifier = Modifier
             .fillMaxWidth()
-            .height(170.dp),
+            .aspectRatio(2f),
         contentAlignment = Alignment.BottomCenter
     ) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(150.dp)
-        ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
             val stroke = 14.dp.toPx()
-            val inset = 18.dp.toPx()
-            val diameter = size.width - inset * 2
+            val inset = stroke / 2f + 2.dp.toPx()
+            val diameter = (size.width - inset * 2).coerceAtMost((size.height - inset) * 2)
             val arcSize = Size(diameter, diameter)
-            val topLeft = Offset(inset, inset)
+            val topLeft = Offset((size.width - diameter) / 2f, inset)
             drawArc(
                 color = track,
                 startAngle = 180f,
