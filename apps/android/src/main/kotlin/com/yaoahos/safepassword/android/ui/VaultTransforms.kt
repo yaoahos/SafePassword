@@ -3,7 +3,7 @@ package com.yaoahos.safepassword.android.ui
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
-import com.yaoahos.safepassword.core.io.SafeInCloudCard
+import com.yaoahos.safepassword.core.io.XmlCard
 import com.yaoahos.safepassword.core.model.Label
 import com.yaoahos.safepassword.core.model.Vault
 import com.yaoahos.safepassword.core.model.newId
@@ -62,8 +62,8 @@ internal fun compactIconData(raw: String): String {
     }.getOrDefault(clean)
 }
 
-/** 把 SafeInCloud XML 卡片并入密码库，返回 (新增条目数, 新增标签数)。 */
-internal fun mergeSafeInCloudCards(vault: Vault, cards: List<SafeInCloudCard>): Pair<Int, Int> {
+/** 把兼容格式的 XML 卡片并入密码库，返回 (新增条目数, 新增标签数)。 */
+internal fun mergeXmlCards(vault: Vault, cards: List<XmlCard>): Pair<Int, Int> {
     val labelsByName = vault.labels.associateBy { it.name }.toMutableMap()
     var newLabels = 0
     cards.forEach { card ->

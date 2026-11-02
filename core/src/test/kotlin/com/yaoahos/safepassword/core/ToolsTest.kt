@@ -1,6 +1,6 @@
 package com.yaoahos.safepassword.core
 
-import com.yaoahos.safepassword.core.io.SafeInCloudXml
+import com.yaoahos.safepassword.core.io.VaultXml
 import com.yaoahos.safepassword.core.io.VaultCodec
 import com.yaoahos.safepassword.core.model.Field
 import com.yaoahos.safepassword.core.model.FieldType
@@ -50,7 +50,7 @@ class ToolsTest {
     }
 
     @Test
-    fun `safeincloud xml import keeps fields labels favorite and skips templates`() {
+    fun `xml import keeps fields labels favorite and skips templates`() {
         val xml = """
             <database>
               <label id="1" name="工作"/>
@@ -70,7 +70,7 @@ class ToolsTest {
               <card id="t1" title="模板" template="true"/>
             </database>
         """.trimIndent()
-        val cards = SafeInCloudXml.parse(xml)
+        val cards = VaultXml.parse(xml)
         assertEquals(1, cards.size)
         val card = cards.first()
         assertEquals("GitHub", card.item.title)
@@ -88,7 +88,7 @@ class ToolsTest {
     }
 
     @Test
-    fun `safeincloud xml export round trips`() {
+    fun `xml export round trips`() {
         val vault = Vault(name = "导出测试")
         val label = com.yaoahos.safepassword.core.model.Label(name = "工作")
         vault.labels.add(label)
@@ -107,9 +107,9 @@ class ToolsTest {
         item.iconData = "iVBORw0KGgo="
         vault.items.add(item)
 
-        val xml = SafeInCloudXml.export(vault)
+        val xml = VaultXml.export(vault)
         assertTrue(xml.contains("<database"))
-        val parsed = SafeInCloudXml.parse(xml)
+        val parsed = VaultXml.parse(xml)
         assertEquals(1, parsed.size)
         val card = parsed.first()
         assertEquals("GitHub", card.item.title)

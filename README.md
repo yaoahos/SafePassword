@@ -12,7 +12,7 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 - SHA-256：`81B081E567775DA13D6B6BEACBE298C6C3EF01CF624D8AF99C27893101278977`
 - 发布下载：[Releases · v1.5.0](https://github.com/yaoahos/SafePassword/releases/tag/v1.5.0)
 
-> 本项目是独立实现，与 SafeInCloud 官方无关联，也未使用其源代码。界面与交互仅作为设计参考；SafeInCloud 名称及相关权益归其权利人所有。
+> 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
 
 ---
 
@@ -65,7 +65,7 @@ SafePassword 面向希望把密码数据掌握在自己手里的用户。它不�
 - 密码生成器（随机密码与口令短语）、安全检查（强度、重复、长期未修改、HIBP k-匿名泄露查询）。
 
 **导入导出与外观**
-- 导入 CSV、JSON 和原版 SafeInCloud XML，支持多选；导出 CSV、JSON、XML。
+- 导入 CSV、JSON 与兼容格式 XML，支持多选；导出 CSV、JSON、XML。
 - 预置主题色与自定义颜色；平板/横屏使用限宽内容区和多列网格；可配置是否允许截屏。
 
 ---
@@ -265,7 +265,7 @@ aapt.exe dump badging dist\SafePassword-1.4.0-release.apk
 - 主题：工具 → 主题，预置色为圆形色块，也支持输入 `#RRGGBB` 自定义，可切换深色模式。
 - 同步：工具 → WebDAV 同步，填写服务器地址、用户名、密码和远程目录后先「测试连接」再「保存并立即同步」；多设备用同一远程目录即可共享 `SafePassword.spv`。
 - 备份：设置 → 本地备份，先选择保存目录（系统文件选择器，可放 SD 卡或网盘同步目录），再创建加密备份或设置自动备份间隔；恢复时需输入该备份的主密码。
-- 导入导出：工具 → 导入密码支持多选 CSV、JSON、SafeInCloud XML；设置 → 数据可导出 CSV、JSON、XML。
+- 导入导出：工具 → 导入密码支持多选 CSV、JSON 与 XML；设置 → 数据可导出 CSV、JSON、XML。
 
 **平板与横屏**：内容区限宽，密码库与工具页使用多列布局，顶栏、抽屉、详情和编辑页保持同一套结构，旋转屏幕后页面状态尽量保留。
 
@@ -290,7 +290,7 @@ SafePassword/
 │       ├── crypto/             AES-GCM、PBKDF2、密钥包裹
 │       ├── model/              密码库、条目、标签、字段、模板
 │       ├── storage/            密码库容器、本地存储
-│       ├── io/                 文件读写、导入导出、SafeInCloud XML
+│       ├── io/                 文件读写、导入导出、XML
 │       ├── sync/               WebDAV、同步引擎、合并策略
 │       ├── json/               序列化配置
 │       └── security/           密码强度、生成器、HIBP
@@ -346,7 +346,7 @@ Gradle 模块路径：
 - [AndroidX Security Crypto](https://developer.android.com/jetpack/androidx/releases/security) — Apache-2.0
 - [Have I Been Pwned](https://haveibeenpwned.com/) — 泄露查询 API
 
-界面设计参考 SafeInCloud 的公开截图，但代码、数据结构和实现均为独立完成。SafeInCloud 是其权利人的商标/产品名称，本项目与官方无隶属或合作关系。
+界面设计参考公开截图，代码、数据结构和实现均为独立完成。
 
 ---
 
@@ -409,6 +409,6 @@ Gradle 模块路径：
 - 新增 密码库创建、恢复与解锁，支持主密码和指纹两种方式
 - 新增 条目、标签、自定义字段、图标、搜索、收藏、回收站与批量操作
 - 新增 WebDAV 云端同步，支持保存后自动同步与冲突合并
-- 新增 CSV、JSON 与 SafeInCloud XML 导入导出
+- 新增 CSV、JSON 与 XML 导入导出
 - 新增 密码生成器、安全检查与泄露检测
 - 新增 主题配色、自动备份，以及手机、平板、横屏适配

@@ -31,7 +31,7 @@ class WebDavClientTest {
         }
         val webDav = client(engine)
         try {
-            assertNull(webDav.get("SafeInCloud/vault-test.sicv"))
+            assertNull(webDav.get("SafePassword/vault-test.sicv"))
         } finally {
             webDav.close()
         }
@@ -45,7 +45,7 @@ class WebDavClientTest {
         }
         val webDav = client(engine)
         try {
-            assertArrayEquals(payload, webDav.get("SafeInCloud/vault-test.sicv"))
+            assertArrayEquals(payload, webDav.get("SafePassword/vault-test.sicv"))
         } finally {
             webDav.close()
         }
@@ -62,7 +62,7 @@ class WebDavClientTest {
         }
         val webDav = client(engine)
         try {
-            val failure = runCatching { webDav.get("SafeInCloud/vault-test.sicv") }.exceptionOrNull()
+            val failure = runCatching { webDav.get("SafePassword/vault-test.sicv") }.exceptionOrNull()
             assertTrue(failure is WebDavException)
             assertTrue(failure?.message.orEmpty().contains("409"))
         } finally {

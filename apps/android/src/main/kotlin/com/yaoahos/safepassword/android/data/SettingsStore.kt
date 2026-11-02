@@ -41,7 +41,7 @@ class SettingsStore(context: Context) {
     private val prefs: SharedPreferences = createPrefs(context, "safepassword_settings", "safepassword_settings_key")
 
     init {
-        // 1.4.1 及更早设置文件叫 safeincloud_settings；改名后一次性搬过来，避免用户重配 WebDAV。
+        // 1.4.x 的设置文件用的是改名前的旧文件名；这里只做一次性搬迁，避免用户重配 WebDAV。
         if (!prefs.getBoolean(KEY_MIGRATED_FROM_LEGACY, false)) {
             val legacy = runCatching {
                 val masterKey = MasterKey.Builder(context)
