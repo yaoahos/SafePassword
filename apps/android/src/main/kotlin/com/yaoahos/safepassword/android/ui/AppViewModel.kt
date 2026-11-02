@@ -1635,13 +1635,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _state.update {
             it.copy(changelog = local.ifEmpty { it.changelog }, showChangelog = true)
         }
-        // 云端最多 50 个版本，拉到后合并：远端优先，本地独有的（还没发版）接在后面。
+        // 云端最多 50 个版本，拉到后合并：按版本号倒序，未发版的本地条目自然排在最前。
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 val remote = GitHubUpdater.releaseNotes(GitHubUpdater.fetchReleases(), limit = MAX_CHANGELOG_VERSIONS)
                 if (remote.isEmpty()) return@runCatching
                 val known = remote.map { it.version }.toSet()
-                val merged = remote + local.filter { it.version.isNotBlank() && it.version !in known }
+                val localOnly = local.filter { it.version.isNotBlank() && it.version !in known }
+                val merged = (localOnly + remote).sortedByDescending { versionRank(it.version) }
                 _state.update { if (it.showChangelog) it.copy(changelog = merged) else it }
             }
         }
