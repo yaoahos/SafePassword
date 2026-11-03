@@ -19,15 +19,6 @@ class VaultStore(private val root: Path) {
 
     init {
         Files.createDirectories(vaultsDir)
-        // 本地库文件统一使用 .spv；扩展名不同的历史文件就地改名，避免库里看不见。
-        runCatching {
-            Files.newDirectoryStream(vaultsDir, "*.sicv").use { stream ->
-                for (path in stream) {
-                    val target = path.resolveSibling(path.fileName.toString().removeSuffix(".sicv") + ".spv")
-                    if (!Files.exists(target)) Files.move(path, target)
-                }
-            }
-        }
     }
 
     fun vaultFile(meta: VaultMeta): Path = vaultsDir.resolve(meta.fileName)
