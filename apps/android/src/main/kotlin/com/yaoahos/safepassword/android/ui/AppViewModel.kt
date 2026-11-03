@@ -174,6 +174,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 maybeAutoBackup(opened, meta)
+                // 新建后立刻推一次云端：即使是空库，也要让另一端能看到，
+                // 否则会出现「一端建了库、另一端看不到，等加条目才出现」。
+                // 这里不受「保存后自动同步」开关影响——建库本身就是要同步的事件。
+                if (_state.value.webDav.isConfigured()) {
+                    viewModelScope.launch(Dispatchers.IO) { doSync(silent = true) }
+                }
             } catch (e: Exception) {
                 fail(e)
             }
@@ -1077,40 +1083,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 return
             }
             if (result.direction == SyncDirection.REMOTE_DELETED) {
-                // 另一端删除了这个库：本地副本跟着删，保持两端一致。
-                val removedName = meta.name
-                container.vaultStore.delete(meta)
-                container.biometric.clear(meta.id)
-                val remaining = container.vaultStore.list()
-                val next = remaining.firstOrNull()
-                if (next == null) {
-                    // 本地一个库都不剩了：回到欢迎页（创建 / 恢复），别再停在解锁框上。
-                    container.settings.lastVaultId = ""
-                } else if (container.settings.lastVaultId == meta.id) {
-                    container.settings.lastVaultId = next.id
-                }
-                val saved = applyFingerprintState(next?.id)
-                active = null
-                masterPassword = null
+                // 另一端删除了这个库：先别自己删，交给用户决定是本机也跟着删，
+                // 还是把本地这份重新传回云端（自动删掉可能把用户还没备份的数据一起弄没）。
                 _state.update {
                     it.copy(
-                        activeVault = null,
-                        activeMeta = next,
-                        unlocked = false,
-                        screen = Screen.Unlock,
-                        vaults = remaining,
-                        settings = container.settings.settings,
-                        biometricSaved = saved,
                         busy = false,
                         syncStatus = result.message,
                         syncStatusAt = now(),
-                        search = "",
-                        onlyFavorites = false,
-                        message = if (remaining.isEmpty()) {
-                            "「$removedName」已在其它设备删除，本地已无密码库"
-                        } else {
-                            "「$removedName」已在其它设备删除，本地副本也已移除"
-                        }
+                        remoteDeletedName = meta.name
                     )
                 }
                 return
@@ -1784,6 +1764,81 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val entry = manifest.vaults.firstOrNull { it.key == cloudKey } ?: return
             if (entry.name == newName) return
             manifest.upsert(cloudKey, newName, entry.updatedAt, entry.size)
+            client.put(
+                config.manifestPath(),
+                manifest.toJson().toByteArray(Charsets.UTF_8)
+            )
+        } finally {
+            client.close()
+        }
+    }
+
+    /** 用户选择「删除本地」：跟着云端一起删掉，回到解锁或欢迎页。 */
+    fun deleteRemoteDeletedVault() {
+        val meta = _state.value.activeMeta
+        val removedName = _state.value.remoteDeletedName ?: meta?.name ?: "密码库"
+        viewModelScope.launch(Dispatchers.IO) {
+            if (meta != null) {
+                container.vaultStore.delete(meta)
+                container.biometric.clear(meta.id)
+            }
+            val remaining = container.vaultStore.list()
+            val next = remaining.firstOrNull()
+            if (next == null) {
+                container.settings.lastVaultId = ""
+            } else if (meta != null && container.settings.lastVaultId == meta.id) {
+                container.settings.lastVaultId = next.id
+            }
+            val saved = applyFingerprintState(next?.id)
+            active = null
+            masterPassword = null
+            _state.update {
+                it.copy(
+                    activeVault = null,
+                    activeMeta = next,
+                    unlocked = false,
+                    screen = Screen.Unlock,
+                    vaults = remaining,
+                    settings = container.settings.settings,
+                    biometricSaved = saved,
+                    busy = false,
+                    search = "",
+                    onlyFavorites = false,
+                    remoteDeletedName = null,
+                    message = if (remaining.isEmpty()) {
+                        "「$removedName」已删除，本地已无密码库"
+                    } else {
+                        "「$removedName」已在本地删除"
+                    }
+                )
+            }
+        }
+    }
+
+    /** 用户选择「恢复到云端」：清掉墓碑，把本地这份重新上传。 */
+    fun restoreRemoteDeletedToCloud() {
+        val meta = _state.value.activeMeta
+        _state.update { it.copy(remoteDeletedName = null) }
+        if (meta == null) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val cloudKey = meta.cloudKey.ifBlank { CloudManifest.keyFor(meta.name) }
+            runCatching { clearCloudDeletion(cloudKey) }
+                .onFailure { showMessage("清除云端删除标记失败，请稍后重试") }
+            doSync(silent = false)
+        }
+    }
+
+    /** 把某个键从云端清单的墓碑列表里去掉，让后续上传不被判定为「已删除」。 */
+    private suspend fun clearCloudDeletion(cloudKey: String) {
+        val config = _state.value.webDav
+        if (!config.isConfigured()) return
+        val client = WebDavClient(config, OkHttp.create())
+        try {
+            client.test()
+            val manifest = CloudManifest.parse(
+                client.get(config.manifestPath())?.toString(Charsets.UTF_8)
+            )
+            manifest.deleted.removeAll { it.key == cloudKey }
             client.put(
                 config.manifestPath(),
                 manifest.toJson().toByteArray(Charsets.UTF_8)
