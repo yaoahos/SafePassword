@@ -87,6 +87,9 @@ logs/
 # ---- 敏感/个人数据 ----
 *.spv
 *.sicv
+# 跨端互操作测试用的固定样本（体积很小，测试必需）
+!core/src/test/resources/interop/*.spv
+!core/src/test/resources/interop/*.sicv
 .env
 .env.*
 secrets.properties
