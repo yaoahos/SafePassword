@@ -86,7 +86,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val webDav = container.settings.webDav
             val lastId = container.settings.lastVaultId
             val meta = vaults.firstOrNull { it.id == lastId } ?: vaults.firstOrNull()
-            // 旧版本把主密码明文存过，升级时凭据已被清除；此时如果设置里仍标记“已开启”，
+            // 主密码明文凭据不会被保存；如果设置里仍标记“已开启”，
             // 会和实际状态不一致（设置页显示已开启、解锁页却没有指纹按钮），这里纠正过来。
             var reconciled = settings
             if (meta != null && reconciled.fingerprintEnabled && !container.biometric.has(meta.id)) {
@@ -1453,9 +1453,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     manifest.vaults.isNotEmpty() -> manifest.vaults.map { entry ->
                         entry.copy(name = if (entry.name.isBlank()) "未命名密码库" else entry.name)
                     }
-                    // 没有清单时先看旧版单文件，再看新版按 ID 命名的散文件（1.4.1 那一批）。
+                    // 没有清单时先看根目录的单文件，再看按库标识命名的散文件。
                     client.get(config.legacyRemotePath()) != null ->
-                        listOf(CloudVaultEntry(key = "", name = "云端密码库（旧版单文件）"))
+                        listOf(CloudVaultEntry(key = "", name = "云端密码库"))
                     else -> client.list(config.normalizedDir())
                         .map { it.name }
                         .filter { it.startsWith("SafePassword-") && it.endsWith(".spv") }
@@ -1485,7 +1485,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 从云端恢复指定密码库。
      *
-     * @param key 云端清单里的键；空字符串表示旧版单文件布局。
+     * @param key 云端清单里的键；空字符串表示根目录的单文件。
      * @param name 恢复后的本地库名（默认沿用云端清单里的名字）。
      */
     fun restoreFromCloud(config: WebDavConfig, key: String, name: String, password: String) {
