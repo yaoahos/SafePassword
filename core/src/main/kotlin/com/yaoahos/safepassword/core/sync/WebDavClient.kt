@@ -43,18 +43,6 @@ data class WebDavConfig(
     /** 旧版单文件布局；升级后只用于读取回退，写入一律走 remotePath(vaultKey)。 */
     fun legacyRemotePath(): String = "${normalizedDir()}/SafePassword.spv"
 
-    /**
-     * 1.4.1 那批按库名生成的键（可能含中文）。
-     * 现在改用纯 ASCII 的 [CloudManifest.keyFor]，这里只为升级时认领旧文件。
-     */
-    fun legacyNamePath(name: String): String {
-        val key = name.trim().lowercase()
-            .replace(Regex("[^a-z0-9\\u4e00-\\u9fa5]+"), "-")
-            .trim('-')
-            .take(64)
-            .ifBlank { "vault" }
-        return "${normalizedDir()}/SafePassword-$key.spv"
-    }
 
     /** 云端密码库清单（key → 显示名），用于「从云端恢复」时列出可选的库。 */
     fun manifestPath(): String = "${normalizedDir()}/SafePassword-index.json"

@@ -2,7 +2,6 @@ package com.yaoahos.safepassword.core.sync
 
 import com.yaoahos.safepassword.core.json.AppJson
 import kotlinx.serialization.Serializable
-import java.security.MessageDigest
 
 /**
  * 云端密码库清单。
@@ -48,14 +47,27 @@ data class CloudManifest(
         }
 
         /**
-         * 密码库名 → 稳定 ASCII 键。
-         * 只用名字做输入，保证同一密码库在任何设备上都算出同一个键（本地 id 导入后会变，不能用）。
-         * 两名同库的情况由「库名唯一校验」在创建时挡住。
+         * 密码库内容密钥 → 云端键。
+         *
+         * 与桌面端 `key_for_content` 完全一致：`k` + contentKey 原始字节的小写 hex。
+         * contentKey 是建库时随机生成的 32 字节，改名、改主密码都不会变，
+         * 所以它就是这个密码库的身份——键因此唯一且终身不变，改名不会换云端文件。
          */
-        fun keyFor(name: String): String {
-            val digest = MessageDigest.getInstance("SHA-256")
-                .digest(name.trim().toByteArray(Charsets.UTF_8))
-            return "v" + digest.joinToString("") { "%02x".format(it) }.take(16)
+        fun keyForContent(contentKey: String): String? {
+            val trimmed = contentKey.trim()
+            if (trimmed.isEmpty()) return null
+            val bytes = runCatching {
+                java.util.Base64.getDecoder().decode(trimmed)
+            }.getOrNull() ?: return null
+            if (bytes.isEmpty()) return null
+            return "k" + bytes.joinToString("") { "%02x".format(it) }
+        }
+
+        /** 生成一个新的云端键（contentKey 缺失时的兜底，正常路径用不到）。 */
+        fun newKey(): String {
+            val bytes = ByteArray(8)
+            java.security.SecureRandom().nextBytes(bytes)
+            return "v" + bytes.joinToString("") { "%02x".format(it) }
         }
     }
 }

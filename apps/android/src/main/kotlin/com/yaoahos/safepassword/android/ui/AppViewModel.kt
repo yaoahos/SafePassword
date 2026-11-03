@@ -307,8 +307,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 container.vaultStore.updateMeta(updated)
                 // 云端清单里的显示名也立刻改掉，配合随后的一次同步，
                 // 另一台设备刷新清单时看到的就已是新名字。
-                val cloudKey = meta.cloudKey.ifBlank { CloudManifest.keyFor(trimmed) }
-                val cloudRenamed = runCatching { renameCloudEntry(cloudKey, trimmed) }.isSuccess
+                val cloudRenamed = runCatching {
+                    renameCloudEntry(meta.cloudKey, meta.name, trimmed)
+                }.isSuccess
                 _state.update {
                     it.copy(
                         activeMeta = updated,
@@ -334,8 +335,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 container.biometric.clear(meta.id)
                 // 云端那份一起删，否则另一台设备下次同步会把本地副本重新传上去，
                 // 本地与云端就成了两个互不相干的分支。
-                val cloudKey = meta.cloudKey.ifBlank { CloudManifest.keyFor(meta.name) }
-                val cloudRemoved = runCatching { deleteCloudCopy(cloudKey, meta.name) }.isSuccess
+                val cloudRemoved = runCatching { deleteCloudCopy(meta.cloudKey, meta.name) }.isSuccess
                 val remaining = container.vaultStore.list()
                 val next = remaining.firstOrNull()
                 val saved = applyFingerprintState(next?.id)
@@ -1028,7 +1028,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val config = _state.value.webDav
         if (!config.isConfigured()) return
         if (_state.value.busy || _state.value.syncConflict) return
-        val remoteKey = session.vault.cloudKey.ifBlank { CloudManifest.keyFor(session.vault.name) }
+        val remoteKey = CloudManifest.keyForContent(session.vault.contentKey)
+            ?: session.vault.cloudKey
         val remotePath = config.remotePath(remoteKey)
         val client = WebDavClient(config, OkHttp.create())
         try {
@@ -1737,18 +1738,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val client = WebDavClient(config, OkHttp.create())
         try {
             client.test()
-            if (cloudKey.isBlank()) {
-                client.delete(config.legacyRemotePath())
-            } else {
-                client.delete(config.remotePath(cloudKey))
-            }
             val manifest = CloudManifest.parse(
                 client.get(config.manifestPath())?.toString(Charsets.UTF_8)
             )
+            // 老库可能还没有键：按名字去清单里找它实际用的键，找不到就什么也不用删。
+            val key = cloudKey.ifBlank { manifestEntryKey(manifest, name) }
+            if (key != null) {
+                client.delete(config.remotePath(key))
+            } else if (cloudKey.isBlank()) {
+                client.delete(config.legacyRemotePath())
+            }
             // 与桌面端一致：删文件 + 从清单摘掉条目（不做墓碑）。
             // 另一台设备据此得到「清单里没有、云端也没有」→ 判为已删除并弹窗询问。
-            if (manifest.vaults.any { it.key == cloudKey || it.name.trim() == name.trim() }) {
-                manifest.remove(cloudKey)
+            val victim = if (key != null) manifest.vaults.firstOrNull { it.key == key } else null
+            if (victim != null) {
+                manifest.remove(victim.key)
                 client.put(
                     config.manifestPath(),
                     manifest.toJson().toByteArray(Charsets.UTF_8)
@@ -1760,18 +1764,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** 改名后同步云端清单里的显示名（云端文件名用的是 cloudKey，不会变）。 */
-    private suspend fun renameCloudEntry(cloudKey: String, newName: String) {
+    private suspend fun renameCloudEntry(cloudKey: String, oldName: String, newName: String) {
         val config = _state.value.webDav
-        if (!config.isConfigured() || cloudKey.isBlank()) return
+        if (!config.isConfigured()) return
         val client = WebDavClient(config, OkHttp.create())
         try {
             client.test()
             val manifest = CloudManifest.parse(
                 client.get(config.manifestPath())?.toString(Charsets.UTF_8)
             )
-            val entry = manifest.vaults.firstOrNull { it.key == cloudKey } ?: return
+            val key = cloudKey.ifBlank { manifestEntryKey(manifest, oldName) } ?: return
+            val entry = manifest.vaults.firstOrNull { it.key == key } ?: return
             if (entry.name == newName) return
-            manifest.upsert(cloudKey, newName, entry.updatedAt, entry.size)
+            manifest.upsert(key, newName, entry.updatedAt, entry.size)
             client.put(
                 config.manifestPath(),
                 manifest.toJson().toByteArray(Charsets.UTF_8)
@@ -1779,6 +1784,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         } finally {
             client.close()
         }
+    }
+
+    /** 清单里显示名匹配的那条记录的键；没有就返回 null。 */
+    private fun manifestEntryKey(manifest: CloudManifest, name: String): String? {
+        val want = name.trim().lowercase()
+        return manifest.vaults.firstOrNull { it.name.trim().lowercase() == want }?.key
     }
 
     /** 用户选择「删除本地」：跟着云端一起删掉，回到解锁或欢迎页。 */

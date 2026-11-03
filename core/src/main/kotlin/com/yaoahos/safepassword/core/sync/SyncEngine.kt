@@ -40,17 +40,35 @@ class SyncEngine(
     private val config: WebDavConfig
 ) {
     /**
-     * 云端文件名的键。
+     * 云端文件名的键：唯一、终身不变，存在密码库自身随数据同步。
      *
-     * 键存在密码库自身（随数据一起同步），所以改名只是改显示名，不会换云端文件；
-     * 老库还没有这个键时，先用「按库名」的旧算法认领已有云端文件，之后固定下来。
+     * 新库在创建时就已经生成好了；只有 1.5.2 之前创建的库还没有键，
+     * 这时先按库名去云端清单里认领已存在的文件（那些键是按库名哈希算的，
+     * 但一旦认领就写进密码库、以后不再重算），认领不到才生成一个新的随机键。
      */
-    private fun resolveKey(local: VaultContainer): String {
+    private suspend fun resolveKey(local: VaultContainer): String {
+        // 键的唯一来源是内容密钥：改名、改主密码都不变，与桌面端 key_for_content 完全一致。
+        val fromContent = CloudManifest.keyForContent(local.vault.contentKey)
+        if (fromContent != null) {
+            if (local.vault.cloudKey != fromContent) local.vault.cloudKey = fromContent
+            return fromContent
+        }
+        // contentKey 缺失（极老的库）才退回存储键 / 清单认领 / 新键。
         val existing = local.vault.cloudKey
         if (existing.isNotBlank()) return existing
-        val adopted = CloudManifest.keyFor(local.vault.name)
-        local.vault.cloudKey = adopted
-        return adopted
+        val claimed = runCatching { manifestEntryFor(local.vault.name)?.key }.getOrNull()
+        val key = claimed?.takeIf { it.isNotBlank() } ?: CloudManifest.newKey()
+        local.vault.cloudKey = key
+        return key
+    }
+
+    /** 云端清单里显示名与给定名字相同的那一条（大小写、首尾空格不敏感）。 */
+    private suspend fun manifestEntryFor(name: String): CloudVaultEntry? {
+        val manifest = CloudManifest.parse(
+            webDav.get(config.manifestPath())?.toString(Charsets.UTF_8)
+        )
+        val want = name.trim().lowercase()
+        return manifest.vaults.firstOrNull { it.name.trim().lowercase() == want }
     }
 
     /**
@@ -116,9 +134,11 @@ class SyncEngine(
             // 升级迁移：旧版文件只有内容密钥一致（同一密码库）才认领，
             // 否则视为云端还没有本库文件，直接上传本地，避免读到别的密码库的数据。
             // 依次尝试：旧版单文件 SafePassword.spv → 1.4.1 的按库名键。
-            val candidates = listOf(
+            // 旧布局：单文件 SafePassword.spv，以及按库名哈希命名的老文件（清单里还记着键）。
+            val claimedKey = runCatching { manifestEntryFor(local.vault.name)?.key }.getOrNull()
+            val candidates = listOfNotNull(
                 config.legacyRemotePath(),
-                config.legacyNamePath(local.vault.name)
+                claimedKey?.takeIf { it.isNotBlank() }?.let { config.remotePath(it) }
             ).distinct().filter { it != remotePath }
             for (candidate in candidates) {
                 val bytes = webDav.get(candidate) ?: continue
@@ -290,6 +310,9 @@ class SyncEngine(
             val manifest = CloudManifest.parse(
                 webDav.get(config.manifestPath())?.toString(Charsets.UTF_8)
             )
+            // 同一个库因改名/换键可能留下旧条目，按名字清掉，恢复列表里才不会出现两条。
+            val name = container.vault.name.trim().lowercase()
+            manifest.vaults.removeAll { it.key != remoteKey && it.name.trim().lowercase() == name }
             manifest.upsert(remoteKey, container.vault.name, container.vault.updatedAt, bytes.size.toLong())
             webDav.put(config.manifestPath(), manifest.toJson().toByteArray(Charsets.UTF_8))
         }
