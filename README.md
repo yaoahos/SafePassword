@@ -9,7 +9,7 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 - 目标系统：Android 15（API 35）
 - 正式 APK：`SafePassword-1.5.1-release.apk`
 - APK 大小：2,626,110 字节
-- SHA-256：`F09B6B45B624C7A0256F96E874A4F9BD0129A2EFB478AA7E3B9B353AEAD273AE`
+- SHA-256：`5850A60EB4557EC1BC0FE19F7321201068DE21518D12CAA5465852B2CC713422`
 - 发布下载：[Releases · v1.5.1](https://github.com/yaoahos/SafePassword/releases/tag/v1.5.1)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。

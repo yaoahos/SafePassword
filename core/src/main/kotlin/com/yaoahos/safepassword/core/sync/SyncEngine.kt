@@ -79,6 +79,7 @@ class SyncEngine(
         val remoteKey = resolveKey(local)
         val remotePath = config.remotePath(remoteKey)
         val remoteBytes = webDav.get(remotePath)
+            ?: CloudManifest.legacyKeyForContent(local.vault.contentKey)?.let { webDav.get(config.remotePath(it)) }
             ?: webDav.get(config.legacyRemotePath())
             ?: throw SyncException("云端没有找到这个密码库的文件，请确认已同步过或检查远程目录")
         val remote = try {
@@ -138,7 +139,8 @@ class SyncEngine(
             val claimedKey = runCatching { manifestEntryFor(local.vault.name)?.key }.getOrNull()
             val candidates = listOfNotNull(
                 config.legacyRemotePath(),
-                claimedKey?.takeIf { it.isNotBlank() }?.let { config.remotePath(it) }
+                claimedKey?.takeIf { it.isNotBlank() }?.let { config.remotePath(it) },
+                CloudManifest.legacyKeyForContent(local.vault.contentKey)?.let { config.remotePath(it) }
             ).distinct().filter { it != remotePath }
             for (candidate in candidates) {
                 val bytes = webDav.get(candidate) ?: continue
