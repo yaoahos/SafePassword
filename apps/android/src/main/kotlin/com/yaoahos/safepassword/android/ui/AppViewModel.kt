@@ -165,6 +165,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         screen = Screen.Vault,
                         busy = false,
                         filterLabelId = defaultLabelIdFor(opened.vault),
+                        search = "",
+                        onlyFavorites = false,
                         security = SecurityAnalyzer.analyze(opened.vault),
                         fingerprintPrompt = it.fingerprintAvailable && !saved,
                         biometricSaved = saved,
@@ -213,6 +215,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         screen = Screen.Vault,
                         busy = false,
                         filterLabelId = defaultLabelIdFor(opened.vault),
+                        // 换库时清掉上一个库的搜索词与「只看收藏」，
+                        // 否则新库首页会莫名其妙是 0 条。
+                        search = "",
+                        onlyFavorites = false,
                         security = SecurityAnalyzer.analyze(opened.vault),
                         biometricSaved = saved,
                         settings = container.settings.settings,
@@ -1077,6 +1083,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 container.biometric.clear(meta.id)
                 val remaining = container.vaultStore.list()
                 val next = remaining.firstOrNull()
+                if (next == null) {
+                    // 本地一个库都不剩了：回到欢迎页（创建 / 恢复），别再停在解锁框上。
+                    container.settings.lastVaultId = ""
+                } else if (container.settings.lastVaultId == meta.id) {
+                    container.settings.lastVaultId = next.id
+                }
                 val saved = applyFingerprintState(next?.id)
                 active = null
                 masterPassword = null
@@ -1092,7 +1104,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         busy = false,
                         syncStatus = result.message,
                         syncStatusAt = now(),
-                        message = "「$removedName」已在其它设备删除，本地副本也已移除"
+                        search = "",
+                        onlyFavorites = false,
+                        message = if (remaining.isEmpty()) {
+                            "「$removedName」已在其它设备删除，本地已无密码库"
+                        } else {
+                            "「$removedName」已在其它设备删除，本地副本也已移除"
+                        }
                     )
                 }
                 return
