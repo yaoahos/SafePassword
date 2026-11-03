@@ -56,7 +56,10 @@ class VaultStore(private val root: Path) {
 
     @Synchronized
     fun create(name: String, password: CharArray): Pair<VaultContainer, VaultMeta> {
-        val vault = Vault(name = name.trim().ifBlank { "我的密码库" })
+        val vault = Vault(
+            name = name.trim().ifBlank { "我的密码库" },
+            // 云端键在这里一次生成、终身不变；改名只改显示名，不换云端文件。
+        )
         val container = VaultContainer.create(vault, password)
         val fileName = "${vault.id}.sicv"
         val meta = VaultMeta(
