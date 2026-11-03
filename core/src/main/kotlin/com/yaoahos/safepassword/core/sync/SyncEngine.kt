@@ -9,7 +9,9 @@ enum class SyncDirection {
     UPLOADED,
     DOWNLOADED,
     MERGED,
-    CONFLICT
+    CONFLICT,
+    /** 云端已删除这个密码库（另一端删的），本地副本应当跟着删除。 */
+    REMOTE_DELETED
 }
 
 enum class ConflictStrategy {
@@ -93,6 +95,21 @@ class SyncEngine(
         val remotePath = config.remotePath(remoteKey)
         var remoteBytes = webDav.get(remotePath)
         var adoptedLegacy: VaultContainer? = null
+        if (remoteBytes == null) {
+            // 另一端删除了这个密码库：清单里会留一条墓碑。
+            // 本地没有更新的改动时，跟随删除，避免把副本重新传上去形成两个分支。
+            val manifest = CloudManifest.parse(
+                webDav.get(config.manifestPath())?.toString(Charsets.UTF_8)
+            )
+            val deletedAt = manifest.deletedAt(remoteKey)
+            if (deletedAt > 0 && local.vault.updatedAt <= deletedAt) {
+                return SyncResult(
+                    container = local,
+                    direction = SyncDirection.REMOTE_DELETED,
+                    message = "云端已删除这个密码库"
+                )
+            }
+        }
         if (remoteBytes == null) {
             // 升级迁移：旧版文件只有内容密钥一致（同一密码库）才认领，
             // 否则视为云端还没有本库文件，直接上传本地，避免读到别的密码库的数据。

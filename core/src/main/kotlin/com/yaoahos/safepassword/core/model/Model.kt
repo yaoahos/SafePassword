@@ -197,7 +197,14 @@ data class VaultMeta(
     val fileName: String,
     val createdAt: Long = now(),
     var lastOpenedAt: Long = 0,
-    var lastSyncedAt: Long = 0
+    var lastSyncedAt: Long = 0,
+    /**
+     * 云端文件的键（SafePassword-<cloudKey>.spv）。
+     *
+     * 记在本地索引里，删库/改名时不必先解锁就能定位云端那一份，
+     * 避免出现「本地删了、云端还在」的分叉。
+     */
+    var cloudKey: String = ""
 )
 
 @Serializable
