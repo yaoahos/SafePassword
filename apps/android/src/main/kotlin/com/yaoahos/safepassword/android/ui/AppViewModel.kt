@@ -1034,16 +1034,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         try {
             val stat = client.stat(remotePath) ?: client.stat(config.legacyRemotePath())
             if (stat == null) {
-                // 云端文件不在了：可能被别的设备删掉了。stat 拿不到时间戳，
-                // 只能去读清单里的墓碑；有更新的墓碑就让 doSync 走删除判定，
-                // 没有的话说明这份库还没上传过，交给常规同步去补齐。
-                val manifest = CloudManifest.parse(
-                    client.get(config.manifestPath())?.toString(Charsets.UTF_8)
-                )
-                val deletedAt = manifest.deletedAt(remoteKey)
-                if (deletedAt > 0 && session.vault.updatedAt <= deletedAt) {
-                    doSync(silent = true)
-                }
+                // 云端文件不在了。与桌面端同规则：只要曾同步过就算「可能被删」，
+                // 交给 doSync 去认领改名后的键 / 判定删除，不用另外维护墓碑。
+                if (session.vault.lastSyncedAt > 0) doSync(silent = true)
                 return
             }
             val changed = when {
@@ -1752,13 +1745,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val manifest = CloudManifest.parse(
                 client.get(config.manifestPath())?.toString(Charsets.UTF_8)
             )
-            // 留墓碑而不是简单抹掉：另一台设备的本地副本要靠它才知道「是被删了」，
-            // 否则它下次同步发现云端没有本库，会把副本重新传上来。
-            manifest.markDeleted(cloudKey, name, now())
-            client.put(
-                config.manifestPath(),
-                manifest.toJson().toByteArray(Charsets.UTF_8)
-            )
+            // 与桌面端一致：删文件 + 从清单摘掉条目（不做墓碑）。
+            // 另一台设备据此得到「清单里没有、云端也没有」→ 判为已删除并弹窗询问。
+            if (manifest.vaults.any { it.key == cloudKey || it.name.trim() == name.trim() }) {
+                manifest.remove(cloudKey)
+                client.put(
+                    config.manifestPath(),
+                    manifest.toJson().toByteArray(Charsets.UTF_8)
+                )
+            }
         } finally {
             client.close()
         }
@@ -1828,36 +1823,57 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** 用户选择「恢复到云端」：清掉墓碑，把本地这份重新上传。 */
+    /**
+     * 用户选择「恢复到云端」：把本地这份强制推回云端。
+     *
+     * 与桌面端的 `restore_to_cloud` 一致——不看时间戳、不看云端有没有文件，
+     * 直接把本体写上去并刷新清单，所以不会再次被判定成「云端已删除」。
+     */
     fun restoreRemoteDeletedToCloud() {
+        val session = active ?: return
         val meta = _state.value.activeMeta
         _state.update { it.copy(remoteDeletedName = null) }
         if (meta == null) return
+        val password = masterPassword ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val cloudKey = meta.cloudKey.ifBlank { CloudManifest.keyFor(meta.name) }
-            runCatching { clearCloudDeletion(cloudKey) }
-                .onFailure { showMessage("清除云端删除标记失败，请稍后重试") }
-            doSync(silent = false)
-        }
-    }
-
-    /** 把某个键从云端清单的墓碑列表里去掉，让后续上传不被判定为「已删除」。 */
-    private suspend fun clearCloudDeletion(cloudKey: String) {
-        val config = _state.value.webDav
-        if (!config.isConfigured()) return
-        val client = WebDavClient(config, OkHttp.create())
-        try {
-            client.test()
-            val manifest = CloudManifest.parse(
-                client.get(config.manifestPath())?.toString(Charsets.UTF_8)
-            )
-            manifest.deleted.removeAll { it.key == cloudKey }
-            client.put(
-                config.manifestPath(),
-                manifest.toJson().toByteArray(Charsets.UTF_8)
-            )
-        } finally {
-            client.close()
+            val config = _state.value.webDav
+            if (!config.isConfigured()) {
+                fail("请先配置 WebDAV 服务器")
+                return@launch
+            }
+            val client = WebDavClient(config, OkHttp.create())
+            try {
+                _state.update { it.copy(busy = true, syncStatus = "正在恢复到云端…", error = null) }
+                val engine = SyncEngine(client, config)
+                val result = engine.restoreToCloud(session)
+                active = result.container
+                val updated = meta.copy(
+                    lastSyncedAt = now(),
+                    name = result.container.vault.name,
+                    cloudKey = result.container.vault.cloudKey.ifBlank { meta.cloudKey }
+                )
+                result.container.saveTo(container.vaultStore.vaultFile(updated))
+                container.vaultStore.updateMeta(updated)
+                _state.update {
+                    it.copy(
+                        activeVault = result.container.vault,
+                        activeMeta = updated,
+                        vaults = container.vaultStore.list(),
+                        busy = false,
+                        syncStatus = result.message,
+                        syncStatusAt = now(),
+                        message = result.message,
+                        security = SecurityAnalyzer.analyze(result.container.vault, it.breached),
+                        dataVersion = it.dataVersion + 1
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                fail(networkErrorText(e, "恢复到云端失败，请稍后重试"))
+            } finally {
+                client.close()
+            }
         }
     }
 
@@ -1880,6 +1896,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val manifest = CloudManifest.parse(
                     client.get(config.manifestPath())?.toString(Charsets.UTF_8)
                 )
+                // 留墓碑而不是直接从清单里抹掉：别的设备靠它知道这份库被删了，
+                // 否则它们只会看到文件消失，只能报「云端没有找到」而不知道该跟随删除。
                 manifest.remove(entry.key)
                 client.put(
                     config.manifestPath(),

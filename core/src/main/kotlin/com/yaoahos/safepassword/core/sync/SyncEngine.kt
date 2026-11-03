@@ -86,30 +86,32 @@ class SyncEngine(
         )
     }
 
+    /**
+     * 把本地这份强制推回云端（「云端已删除」弹窗里的「恢复到云端」）。
+     * 不看时间戳、不判断云端有没有同名文件，直接写本体并维护清单。
+     */
+    suspend fun restoreToCloud(local: VaultContainer): SyncResult {
+        val remoteKey = resolveKey(local)
+        local.ensureContentKey()
+        local.vault.touch()
+        local.vault.lastSyncedAt = local.vault.updatedAt
+        upload(config.remotePath(remoteKey), local, remoteKey)
+        return SyncResult(
+            container = local,
+            direction = SyncDirection.UPLOADED,
+            message = "已恢复到云端"
+        )
+    }
+
     suspend fun sync(
         local: VaultContainer,
         password: CharArray,
         conflictStrategy: ConflictStrategy = ConflictStrategy.MERGE
     ): SyncResult {
-        val remoteKey = resolveKey(local)
-        val remotePath = config.remotePath(remoteKey)
+        var remoteKey = resolveKey(local)
+        var remotePath = config.remotePath(remoteKey)
         var remoteBytes = webDav.get(remotePath)
         var adoptedLegacy: VaultContainer? = null
-        if (remoteBytes == null) {
-            // 另一端删除了这个密码库：清单里会留一条墓碑。
-            // 本地没有更新的改动时，跟随删除，避免把副本重新传上去形成两个分支。
-            val manifest = CloudManifest.parse(
-                webDav.get(config.manifestPath())?.toString(Charsets.UTF_8)
-            )
-            val deletedAt = manifest.deletedAt(remoteKey)
-            if (deletedAt > 0 && local.vault.updatedAt <= deletedAt) {
-                return SyncResult(
-                    container = local,
-                    direction = SyncDirection.REMOTE_DELETED,
-                    message = "云端已删除这个密码库"
-                )
-            }
-        }
         if (remoteBytes == null) {
             // 升级迁移：旧版文件只有内容密钥一致（同一密码库）才认领，
             // 否则视为云端还没有本库文件，直接上传本地，避免读到别的密码库的数据。
@@ -130,11 +132,40 @@ class SyncEngine(
                 }
             }
         }
+
+        // 云端既没有本库文件、也没有可认领的旧文件时判为「被删了」。
+        // 与桌面端同一套规则：不看墓碑，只看「曾同步过 + 文件确实没了」，
+        // 先按库名去清单里认领改名后的新键，仍找不到才交给界面询问怎么处理。
+        if (remoteBytes == null && local.vault.lastSyncedAt > 0) {
+            val manifest = CloudManifest.parse(
+                webDav.get(config.manifestPath())?.toString(Charsets.UTF_8)
+            )
+            val want = local.vault.name.trim().lowercase()
+            val entry = manifest.vaults.firstOrNull { it.name.trim().lowercase() == want }
+            if (entry != null && entry.key != remoteKey) {
+                remoteKey = entry.key
+                remotePath = config.remotePath(remoteKey)
+                remoteBytes = webDav.get(remotePath)
+            }
+            if (remoteBytes == null) {
+                // 本地还有没同步出去的改动时，提示里要说清楚，因为删本地会丢数据。
+                val pending = local.vault.updatedAt > local.vault.lastSyncedAt + 3_000
+                return SyncResult(
+                    container = local,
+                    direction = SyncDirection.REMOTE_DELETED,
+                    message = if (pending) {
+                        "云端已删除该密码库（本地有未同步的修改）"
+                    } else {
+                        "云端已删除该密码库"
+                    }
+                )
+            }
+        }
         if (remoteBytes == null) {
             local.ensureContentKey()
             local.vault.lastSyncedAt = now()
             local.vault.touch()
-            upload(remotePath, local)
+            upload(remotePath, local, remoteKey)
             return SyncResult(
                 container = local,
                 direction = SyncDirection.UPLOADED,
@@ -181,7 +212,7 @@ class SyncEngine(
 
             localChanged && !remoteChanged -> {
                 local.vault.lastSyncedAt = now()
-                upload(remotePath, local)
+                upload(remotePath, local, remoteKey)
                 SyncResult(
                     container = local,
                     direction = SyncDirection.UPLOADED,
@@ -200,7 +231,7 @@ class SyncEngine(
                 }
                 if (conflictStrategy == ConflictStrategy.KEEP_LOCAL) {
                     local.vault.lastSyncedAt = now()
-                    upload(remotePath, local)
+                    upload(remotePath, local, remoteKey)
                     return SyncResult(
                         container = local,
                         direction = SyncDirection.UPLOADED,
@@ -231,7 +262,7 @@ class SyncEngine(
                         cloudKey = local.vault.cloudKey.ifBlank { remoteKey }
                     )
                 )
-                upload(remotePath, updated)
+                upload(remotePath, updated, remoteKey)
                 SyncResult(
                     container = updated,
                     direction = SyncDirection.MERGED,
@@ -252,14 +283,14 @@ class SyncEngine(
      * 清单失败不应让整次同步失败——清单只服务「从云端恢复」时的选择列表，
      * 真读不到时恢复流程还能列目录兜底。
      */
-    private suspend fun upload(remotePath: String, container: VaultContainer) {
+    private suspend fun upload(remotePath: String, container: VaultContainer, remoteKey: String) {
         val bytes = container.toBytes()
         webDav.put(remotePath, bytes)
         runCatching {
             val manifest = CloudManifest.parse(
                 webDav.get(config.manifestPath())?.toString(Charsets.UTF_8)
             )
-            manifest.upsert(container.vault.cloudKey.ifBlank { CloudManifest.keyFor(container.vault.name) }, container.vault.name, container.vault.updatedAt, bytes.size.toLong())
+            manifest.upsert(remoteKey, container.vault.name, container.vault.updatedAt, bytes.size.toLong())
             webDav.put(config.manifestPath(), manifest.toJson().toByteArray(Charsets.UTF_8))
         }
     }
