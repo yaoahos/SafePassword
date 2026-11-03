@@ -20,17 +20,36 @@ data class CloudVaultEntry(
 
 @Serializable
 data class CloudManifest(
-    var vaults: MutableList<CloudVaultEntry> = mutableListOf()
+    var vaults: MutableList<CloudVaultEntry> = mutableListOf(),
+    /**
+     * 已删除密码库的墓碑。
+     *
+     * 只删文件不够：另一台设备还留着本地副本，下次同步发现「云端没有」就会
+     * 重新上传，两边立刻分叉。墓碑记下删除时间，其它设备据此同步删除本地副本。
+     */
+    var deleted: MutableList<CloudVaultEntry> = mutableListOf()
 ) {
     fun upsert(key: String, name: String, updatedAt: Long, size: Long) {
         val position = vaults.indexOfFirst { it.key == key }
         val entry = CloudVaultEntry(key, name, updatedAt, size)
         if (position >= 0) vaults[position] = entry else vaults.add(entry)
+        deleted.removeAll { it.key == key }
     }
 
     fun remove(key: String) {
         vaults.removeAll { it.key == key }
+        deleted.removeAll { it.key == key }
     }
+
+    /** 记一条删除墓碑，供其它设备识别「这个库是被主动删掉的」。 */
+    fun markDeleted(key: String, name: String, at: Long) {
+        vaults.removeAll { it.key == key }
+        deleted.removeAll { it.key == key }
+        deleted.add(CloudVaultEntry(key, name, at, 0))
+    }
+
+    /** 该键被删除的时间；没有墓碑返回 0。 */
+    fun deletedAt(key: String): Long = deleted.firstOrNull { it.key == key }?.updatedAt ?: 0
 
     fun toJson(): String = AppJson.instance.encodeToString(serializer(), this)
 

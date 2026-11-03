@@ -197,7 +197,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val opened = container.vaultStore.open(meta, password.toCharArray())
-                val updatedMeta = meta.copy(lastOpenedAt = now(), name = opened.vault.name)
+                val updatedMeta = meta.copy(lastOpenedAt = now(), name = opened.vault.name, cloudKey = opened.vault.cloudKey.ifBlank { meta.cloudKey })
                 container.vaultStore.updateMeta(updatedMeta)
                 container.settings.lastVaultId = meta.id
                 attach(opened, updatedMeta, password)
@@ -293,8 +293,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 persist()
                 val updated = meta.copy(name = trimmed)
                 container.vaultStore.updateMeta(updated)
+                // 云端清单里的显示名也立刻改掉，配合随后的一次同步，
+                // 另一台设备刷新清单时看到的就已是新名字。
+                val cloudKey = meta.cloudKey.ifBlank { CloudManifest.keyFor(trimmed) }
+                val cloudRenamed = runCatching { renameCloudEntry(cloudKey, trimmed) }.isSuccess
                 _state.update {
-                    it.copy(activeMeta = updated, vaults = container.vaultStore.list(), message = "已重命名")
+                    it.copy(
+                        activeMeta = updated,
+                        vaults = container.vaultStore.list(),
+                        message = if (cloudRenamed) "已重命名" else "已重命名（云端名稍后同步）"
+                    )
                 }
                 // 库名是同步内容的一部分（云端清单也会更新名字），
                 // 不推一次的话另一台设备看到的还是旧名字。
@@ -312,6 +320,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 // 删库后自动切到另一个本来就有指纹的库时，开关保持开启，不需要重新验证。
                 container.vaultStore.delete(meta)
                 container.biometric.clear(meta.id)
+                // 云端那份一起删，否则另一台设备下次同步会把本地副本重新传上去，
+                // 本地与云端就成了两个互不相干的分支。
+                val cloudKey = meta.cloudKey.ifBlank { CloudManifest.keyFor(meta.name) }
+                val cloudRemoved = runCatching { deleteCloudCopy(cloudKey, meta.name) }.isSuccess
                 val remaining = container.vaultStore.list()
                 val next = remaining.firstOrNull()
                 val saved = applyFingerprintState(next?.id)
@@ -328,7 +340,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             vaults = remaining,
                             settings = container.settings.settings,
                             biometricSaved = saved,
-                            message = "密码库已删除"
+                            message = if (cloudRemoved) "密码库已删除，云端副本也已删除" else "密码库已删除"
                         )
                     }
                 } else {
@@ -337,7 +349,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             vaults = remaining,
                             settings = container.settings.settings,
                             biometricSaved = saved,
-                            message = "密码库已删除"
+                            message = if (cloudRemoved) "密码库已删除，云端副本也已删除" else "密码库已删除"
                         )
                     }
                 }
@@ -921,7 +933,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 active = result.container
                 val updatedMeta = meta.copy(
                     lastSyncedAt = now(),
-                    name = result.container.vault.name
+                    name = result.container.vault.name,
+                    cloudKey = result.container.vault.cloudKey.ifBlank { meta.cloudKey }
                 )
                 result.container.saveTo(container.vaultStore.vaultFile(updatedMeta))
                 container.vaultStore.updateMeta(updatedMeta)
@@ -1057,8 +1070,35 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 return
             }
+            if (result.direction == SyncDirection.REMOTE_DELETED) {
+                // 另一端删除了这个库：本地副本跟着删，保持两端一致。
+                val removedName = meta.name
+                container.vaultStore.delete(meta)
+                container.biometric.clear(meta.id)
+                val remaining = container.vaultStore.list()
+                val next = remaining.firstOrNull()
+                val saved = applyFingerprintState(next?.id)
+                active = null
+                masterPassword = null
+                _state.update {
+                    it.copy(
+                        activeVault = null,
+                        activeMeta = next,
+                        unlocked = false,
+                        screen = Screen.Unlock,
+                        vaults = remaining,
+                        settings = container.settings.settings,
+                        biometricSaved = saved,
+                        busy = false,
+                        syncStatus = result.message,
+                        syncStatusAt = now(),
+                        message = "「$removedName」已在其它设备删除，本地副本也已移除"
+                    )
+                }
+                return
+            }
             active = result.container
-            val updatedMeta = meta.copy(lastSyncedAt = now(), name = result.container.vault.name)
+            val updatedMeta = meta.copy(lastSyncedAt = now(), name = result.container.vault.name, cloudKey = result.container.vault.cloudKey.ifBlank { meta.cloudKey })
             result.container.saveTo(container.vaultStore.vaultFile(updatedMeta))
             container.vaultStore.updateMeta(updatedMeta)
             _state.update {
@@ -1681,6 +1721,60 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun dismissFingerprintPrompt() = _state.update { it.copy(fingerprintPrompt = false) }
 
     /** 删除云端的某个密码库文件，并把清单里的条目一并去掉。 */
+    /**
+     * 删除云端那份密码库文件并把它从清单里摘掉。
+     *
+     * 只在本地删库时调用：本地和云端必须一起消失，否则另一台设备会把
+     * 本地副本当成「云端还没有」重新上传，两边就分叉了。
+     */
+    private suspend fun deleteCloudCopy(cloudKey: String, name: String) {
+        val config = _state.value.webDav
+        if (!config.isConfigured()) return
+        val client = WebDavClient(config, OkHttp.create())
+        try {
+            client.test()
+            if (cloudKey.isBlank()) {
+                client.delete(config.legacyRemotePath())
+            } else {
+                client.delete(config.remotePath(cloudKey))
+            }
+            val manifest = CloudManifest.parse(
+                client.get(config.manifestPath())?.toString(Charsets.UTF_8)
+            )
+            // 留墓碑而不是简单抹掉：另一台设备的本地副本要靠它才知道「是被删了」，
+            // 否则它下次同步发现云端没有本库，会把副本重新传上来。
+            manifest.markDeleted(cloudKey, name, now())
+            client.put(
+                config.manifestPath(),
+                manifest.toJson().toByteArray(Charsets.UTF_8)
+            )
+        } finally {
+            client.close()
+        }
+    }
+
+    /** 改名后同步云端清单里的显示名（云端文件名用的是 cloudKey，不会变）。 */
+    private suspend fun renameCloudEntry(cloudKey: String, newName: String) {
+        val config = _state.value.webDav
+        if (!config.isConfigured() || cloudKey.isBlank()) return
+        val client = WebDavClient(config, OkHttp.create())
+        try {
+            client.test()
+            val manifest = CloudManifest.parse(
+                client.get(config.manifestPath())?.toString(Charsets.UTF_8)
+            )
+            val entry = manifest.vaults.firstOrNull { it.key == cloudKey } ?: return
+            if (entry.name == newName) return
+            manifest.upsert(cloudKey, newName, entry.updatedAt, entry.size)
+            client.put(
+                config.manifestPath(),
+                manifest.toJson().toByteArray(Charsets.UTF_8)
+            )
+        } finally {
+            client.close()
+        }
+    }
+
     fun deleteCloudVault(entry: CloudVaultEntry) {
         val config = _state.value.webDav
         if (!config.isConfigured()) {

@@ -688,8 +688,10 @@ fun ItemIcon(item: VaultItem, size: Dp = 46.dp, corner: Dp = 13.dp, load: Boolea
         Color(0xFF059669), Color(0xFFEA580C), Color(0xFF0891B2),
         Color(0xFF4F46E5), Color(0xFFB45309)
     )
-    val fallbackColor = remember(item.id, item.title) {
-        fallbackPalette[Math.floorMod((item.id + item.title).hashCode(), fallbackPalette.size)]
+    // 默认图标颜色只跟标题有关：同一个标题在任何设备上都得到同一个颜色，
+    // 不会再出现「这台绿色、那台蓝色」的情况。id 各端不同，不能参与计算。
+    val fallbackColor = remember(item.title) {
+        fallbackPalette[Math.floorMod(item.title.hashCode(), fallbackPalette.size)]
     }
     Box(
         modifier = Modifier
