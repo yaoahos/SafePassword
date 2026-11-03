@@ -1039,7 +1039,7 @@ private fun encodeIcon(context: Context, uri: Uri): Result<String> {
 }
 
 private fun VaultItem.deepCopy(): VaultItem = copy(
-    fields = fields.map { it.copy() }.toMutableList(),
+    fields = fields.map { it.copy(history = it.history.toMutableList()) }.toMutableList(),
     labelIds = labelIds.toMutableList()
 )
 

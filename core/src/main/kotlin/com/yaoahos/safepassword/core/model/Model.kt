@@ -26,13 +26,22 @@ enum class FieldType {
     MULTILINE
 }
 
+/** 密码/秘密字段被改掉后留下的旧值。 */
+@Serializable
+data class FieldHistory(
+    var value: String,
+    var changedAt: Long = now()
+)
+
 @Serializable
 data class Field(
     val id: String = newId(),
     var label: String,
     var value: String = "",
     var type: FieldType = FieldType.TEXT,
-    var sensitive: Boolean = type == FieldType.PASSWORD || type == FieldType.SECRET
+    var sensitive: Boolean = type == FieldType.PASSWORD || type == FieldType.SECRET,
+    /** 历史值，最新的在前；只对 PASSWORD / SECRET 记录。 */
+    var history: MutableList<FieldHistory> = mutableListOf()
 )
 
 @Serializable
@@ -105,7 +114,7 @@ data class VaultItem(
         createdAt = now(),
         updatedAt = now(),
         deletedAt = null,
-        fields = fields.map { it.copy(id = newId()) }.toMutableList(),
+        fields = fields.map { it.copy(id = newId(), history = it.history.toMutableList()) }.toMutableList(),
         labelIds = labelIds.toMutableList()
     )
 
@@ -117,7 +126,7 @@ data class VaultItem(
         createdAt = now(),
         updatedAt = now(),
         deletedAt = null,
-        fields = fields.map { it.copy(id = newId()) }.toMutableList(),
+        fields = fields.map { it.copy(id = newId(), history = it.history.toMutableList()) }.toMutableList(),
         labelIds = labelIds.toMutableList()
     )
 }

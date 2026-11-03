@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.MoreVert
@@ -98,6 +100,7 @@ fun ItemViewScreen(viewModel: AppViewModel, state: AppUiState, itemId: String) {
     var moreMenu by remember { mutableStateOf(false) }
     var showLabels by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var historyFieldId by remember(itemId) { mutableStateOf<String?>(null) }
 
 
     val password = item.primaryPassword
@@ -385,7 +388,12 @@ fun ItemViewScreen(viewModel: AppViewModel, state: AppUiState, itemId: String) {
                 FieldRow(
                     field = field,
                     onCopy = { copyValue(field.value) },
-                    onOpenUrl = { openUrlValue(it) }
+                    onOpenUrl = { openUrlValue(it) },
+                    onOpenHistory = if (field.history.isNotEmpty()) {
+                        { historyFieldId = field.id }
+                    } else {
+                        null
+                    }
                 )
             }
 
@@ -468,13 +476,29 @@ fun ItemViewScreen(viewModel: AppViewModel, state: AppUiState, itemId: String) {
         )
     }
 
+    historyFieldId?.let { fieldId ->
+        val field = item.fields.firstOrNull { it.id == fieldId }
+        if (field == null || field.history.isEmpty()) {
+            historyFieldId = null
+        } else {
+            FieldHistoryDialog(
+                field = field,
+                onCopy = { copyValue(it) },
+                onDelete = { index -> viewModel.deleteFieldHistory(item.id, fieldId, index) },
+                onClear = { viewModel.clearFieldHistory(item.id, fieldId) },
+                onDismiss = { historyFieldId = null }
+            )
+        }
+    }
+
 }
 
 @Composable
 private fun FieldRow(
     field: Field,
     onCopy: () -> Unit,
-    onOpenUrl: (String) -> Unit
+    onOpenUrl: (String) -> Unit,
+    onOpenHistory: (() -> Unit)? = null
 ) {
     val isPassword = field.type == FieldType.PASSWORD
     val isSecret = field.type == FieldType.SECRET
@@ -507,6 +531,16 @@ private fun FieldRow(
                         contentDescription = "打开",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
+            if (onOpenHistory != null) {
+                IconButton(onClick = onOpenHistory, modifier = Modifier.size(26.dp)) {
+                    Icon(
+                        Icons.Outlined.History,
+                        contentDescription = "历史记录",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
@@ -633,4 +667,115 @@ private fun withScheme(url: String): String {
 private fun detailDate(millis: Long): String {
     if (millis <= 0) return "—"
     return SimpleDateFormat("yyyy/M/d HH:mm", Locale.CHINA).format(Date(millis))
+}
+
+/**
+ * 密码 / 秘密字段的历史值列表：可逐个查看、复制、删除，也可整体清空。
+ *
+ * 旧密码默认仍是掩码，需要点右上角的眼睛才展开，避免在公共场合直接暴露。
+ */
+@Composable
+private fun FieldHistoryDialog(
+    field: Field,
+    onCopy: (String) -> Unit,
+    onDelete: (Int) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var revealed by remember(field.id) { mutableStateOf(false) }
+    var confirmClear by remember(field.id) { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("历史记录")
+                    Text(
+                        "${field.label} · ${field.history.size} 条",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(onClick = { revealed = !revealed }) {
+                    Icon(
+                        if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                        contentDescription = if (revealed) "隐藏历史值" else "显示历史值",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 360.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                field.history.forEachIndexed { index, entry ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                if (revealed) entry.value
+                                else "•".repeat(entry.value.length.coerceIn(8, 16)),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                detailDate(entry.changedAt),
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { onCopy(entry.value) }, modifier = Modifier.size(30.dp)) {
+                            Icon(
+                                Icons.Outlined.ContentCopy,
+                                contentDescription = "复制这条",
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { onDelete(index) }, modifier = Modifier.size(30.dp)) {
+                            Icon(
+                                Icons.Outlined.Delete,
+                                contentDescription = "删除这条",
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                    if (index < field.history.lastIndex) {
+                        HorizontalDivider(
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+                if (confirmClear) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "清空后无法恢复",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = {
+                            confirmClear = false
+                            onClear()
+                        }) { Text("确定清空", color = MaterialTheme.colorScheme.error) }
+                        TextButton(onClick = { confirmClear = false }) { Text("取消") }
+                    }
+                } else {
+                    TextButton(onClick = { confirmClear = true }) {
+                        Text("清空全部", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("关闭") }
+        }
+    )
 }
