@@ -21,7 +21,7 @@ class VaultFormatException(message: String) : Exception(message)
  * 加密保险库容器。
  *
  * 文件结构：
- *   magic "SICV" / version / PBKDF2 迭代次数 / salt / 被 KEK 包裹的 DEK / AES-GCM 密文
+ *   magic "SPV" / version / PBKDF2 迭代次数 / salt / 被 KEK 包裹的 DEK / AES-GCM 密文
  *
  * 主密码只用于派生 KEK；真正加密数据的是随机 DEK。修改主密码只需重新包裹 DEK，
  * 不需要重新加密整个数据库，附件也不受影响。
@@ -81,13 +81,10 @@ class VaultContainer private constructor(
     }
 
     companion object {
-        private val MAGIC = byteArrayOf('S'.code.toByte(), 'I'.code.toByte(), 'C'.code.toByte(), 'V'.code.toByte())
+        private val MAGIC = byteArrayOf('S'.code.toByte(), 'P'.code.toByte(), 'V'.code.toByte())
 
         /** 当前写出的版本：payload 先 gzip 再加密。 */
         private const val WRITE_VERSION = 2
-
-        /** 不压缩的容器：payload 就是明文 JSON。 */
-        private const val PLAIN_VERSION = 1
 
         /** 解压后的明文上限，防压缩炸弹。 */
         private const val MAX_PLAINTEXT_BYTES = 256 * 1024 * 1024
@@ -96,7 +93,7 @@ class VaultContainer private constructor(
 
         /** 单个库文件的密文上限，防止伪造头部把内存撑爆。 */
         private const val MAX_PAYLOAD_BYTES = 64 * 1024 * 1024
-        private val PAYLOAD_AAD = "SICV-PAYLOAD".toByteArray(Charsets.UTF_8)
+        private val PAYLOAD_AAD = "SPV-PAYLOAD".toByteArray(Charsets.UTF_8)
 
         fun create(vault: Vault, password: CharArray): VaultContainer {
             val salt = Crypto.randomBytes(SALT_BYTES)
@@ -129,8 +126,8 @@ class VaultContainer private constructor(
             } catch (_: Exception) {
                 throw WrongPasswordException()
             }
-            // v1 的明文就是 JSON；v2 先 gzip 再加密，解压后才是 JSON。
-            val plain = if (header.version == PLAIN_VERSION) sealed else gunzip(sealed)
+            // payload 是 gzip 后的 JSON。
+            val plain = gunzip(sealed)
             val vault = try {
                 AppJson.instance.decodeFromString(Vault.serializer(), plain.toString(Charsets.UTF_8))
             } catch (e: Exception) {
@@ -152,11 +149,11 @@ class VaultContainer private constructor(
 
         private fun readHeader(bytes: ByteArray): Header {
             DataInputStream(ByteArrayInputStream(bytes)).use { data ->
-                val magic = ByteArray(4)
+                val magic = ByteArray(MAGIC.size)
                 data.readFully(magic)
                 if (!magic.contentEquals(MAGIC)) throw VaultFormatException("不是有效的保险库文件")
                 val version = data.readInt()
-                if (version != PLAIN_VERSION && version != WRITE_VERSION) {
+                if (version != WRITE_VERSION) {
                     throw VaultFormatException("不支持的数据库版本：$version")
                 }
                 val iterations = data.readInt()

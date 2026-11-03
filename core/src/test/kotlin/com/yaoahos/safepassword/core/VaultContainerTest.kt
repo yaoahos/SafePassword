@@ -71,10 +71,10 @@ class VaultContainerTest {
     // ---------------------------------------------------------------- 容器 v2
 
     private fun headerVersion(bytes: ByteArray): Int =
-        ((bytes[4].toInt() and 0xFF) shl 24) or
-            ((bytes[5].toInt() and 0xFF) shl 16) or
-            ((bytes[6].toInt() and 0xFF) shl 8) or
-            (bytes[7].toInt() and 0xFF)
+        ((bytes[3].toInt() and 0xFF) shl 24) or
+            ((bytes[4].toInt() and 0xFF) shl 16) or
+            ((bytes[5].toInt() and 0xFF) shl 8) or
+            (bytes[6].toInt() and 0xFF)
 
     private fun resource(name: String): ByteArray =
         requireNotNull(javaClass.getResourceAsStream("/interop/$name")) { "缺少测试资源 $name" }
@@ -115,15 +115,6 @@ class VaultContainerTest {
         assertTrue("压缩后应至少小一半：json=${json.size} container=${packed.size}", packed.size * 2 < json.size)
     }
 
-    @Test
-    fun `reads version 1 fixture`() {
-        val password = resource("known1.password.txt").toString(Charsets.UTF_8).trim().toCharArray()
-        val bytes = resource("known1-v1.spv")
-        assertEquals(1, headerVersion(bytes))
-        val vault = VaultContainer.open(bytes, password).vault
-        assertEquals("测试密码库🚀", vault.name)
-        assertEquals(5, vault.items.size)
-    }
 
     @Test
     fun `reads version 2 fixture produced by desktop`() {
@@ -145,20 +136,11 @@ class VaultContainerTest {
         }
     }
 
-    @Test
-    fun `upgrading a version 1 vault rewrites it as version 2`() {
-        val password = resource("known1.password.txt").toString(Charsets.UTF_8).trim().toCharArray()
-        val opened = VaultContainer.open(resource("known1-v1.spv"), password)
-        val rewritten = opened.toBytes()
-        assertEquals(2, headerVersion(rewritten))
-        val reopened = VaultContainer.open(rewritten, password)
-        assertEquals(opened.vault.items.size, reopened.vault.items.size)
-    }
 
     @Test
     fun `rejects unknown container version`() {
         val bytes = VaultContainer.create(Vault(name = "库"), "password-123".toCharArray()).toBytes()
-        bytes[7] = 3
+        bytes[6] = 3
         val failure = runCatching { VaultContainer.open(bytes, "password-123".toCharArray()) }.exceptionOrNull()
         assertTrue(failure is com.yaoahos.safepassword.core.crypto.VaultFormatException)
         assertTrue(failure!!.message!!.contains("不支持的数据库版本：3"))

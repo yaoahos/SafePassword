@@ -51,10 +51,10 @@ object Crypto {
     }
 
     fun wrapDek(kek: SecretKey, dek: SecretKey): ByteArray =
-        encrypt(kek, dek.encoded, "SICV-WRAP".toByteArray(Charsets.UTF_8))
+        encrypt(kek, dek.encoded, "SPV-WRAP".toByteArray(Charsets.UTF_8))
 
     fun unwrapDek(kek: SecretKey, wrapped: ByteArray): SecretKey {
-        val raw = decrypt(kek, wrapped, "SICV-WRAP".toByteArray(Charsets.UTF_8))
+        val raw = decrypt(kek, wrapped, "SPV-WRAP".toByteArray(Charsets.UTF_8))
         require(raw.size == 32) { "数据密钥长度无效" }
         return SecretKeySpec(raw, "AES")
     }
