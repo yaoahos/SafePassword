@@ -209,94 +209,90 @@ class SyncEngine(
         }
 
         val last = local.vault.lastSyncedAt
-        val localChanged = local.vault.updatedAt > last
-        val remoteChanged = remote.vault.updatedAt > last
+        // 两台设备的墙上时钟不可比：差几秒就会把「对端有改动」误判成「没改动」，
+        // 从而拿本地旧数据覆盖云端（实测：手机新增条目后，平板解锁反而覆盖了云端，
+        // 直到手机再改一次才同步过去）。所以默认路径不按时间戳挑赢家，一律合并。
+        val localChanged = local.vault.updatedAt > last + CLOCK_SKEW_MS
+        val remoteChanged = remote.vault.updatedAt > last + CLOCK_SKEW_MS
 
-        return when {
-            !localChanged && !remoteChanged -> SyncResult(
+        if (conflictStrategy == ConflictStrategy.DETECT && localChanged && remoteChanged) {
+            return SyncResult(
                 container = local,
-                direction = SyncDirection.NONE,
-                message = "已是最新状态"
+                direction = SyncDirection.CONFLICT,
+                conflicts = 1,
+                message = "检测到本地与云端都有新修改，请选择处理方式"
             )
-
-            !localChanged && remoteChanged -> {
-                val downloaded = remote.vault.copy(
-                    lastSyncedAt = now(),
-                    deviceId = local.vault.deviceId,
-                    cloudKey = remote.vault.cloudKey.ifBlank { remoteKey }
-                )
-                SyncResult(
-                    container = local.withVault(downloaded),
-                    direction = SyncDirection.DOWNLOADED,
-                    message = "已下载远端更新"
-                )
-            }
-
-            localChanged && !remoteChanged -> {
-                local.vault.lastSyncedAt = now()
-                upload(remotePath, local, remoteKey)
-                SyncResult(
-                    container = local,
-                    direction = SyncDirection.UPLOADED,
-                    message = "已上传本地更新"
-                )
-            }
-
-            else -> {
-                if (conflictStrategy == ConflictStrategy.DETECT) {
-                    return SyncResult(
-                        container = local,
-                        direction = SyncDirection.CONFLICT,
-                        conflicts = 1,
-                        message = "检测到本地与云端都有新修改，请选择处理方式"
-                    )
-                }
-                if (conflictStrategy == ConflictStrategy.KEEP_LOCAL) {
-                    local.vault.lastSyncedAt = now()
-                    upload(remotePath, local, remoteKey)
-                    return SyncResult(
-                        container = local,
-                        direction = SyncDirection.UPLOADED,
-                        message = "已保留本地版本并覆盖云端"
-                    )
-                }
-                if (conflictStrategy == ConflictStrategy.KEEP_REMOTE) {
-                    val downloaded = remote.vault.copy(
-                        lastSyncedAt = now(),
-                        deviceId = local.vault.deviceId,
-                        cloudKey = remote.vault.cloudKey.ifBlank { remoteKey }
-                    )
-                    return SyncResult(
-                        container = local.withVault(downloaded),
-                        direction = SyncDirection.DOWNLOADED,
-                        message = "已使用云端版本覆盖本地"
-                    )
-                }
-                val merge = VaultMerger.merge(local.vault, remote.vault, last)
-                val resolvedName = if (remote.vault.updatedAt > local.vault.updatedAt) {
-                    remote.vault.name
-                } else {
-                    local.vault.name
-                }
-                val updated = local.withVault(
-                    merge.vault.copy(
-                        name = resolvedName,
-                        cloudKey = local.vault.cloudKey.ifBlank { remoteKey }
-                    )
-                )
-                upload(remotePath, updated, remoteKey)
-                SyncResult(
-                    container = updated,
-                    direction = SyncDirection.MERGED,
-                    conflicts = merge.conflicts,
-                    message = if (merge.conflicts > 0) {
-                        "已合并，产生 ${merge.conflicts} 个冲突副本"
-                    } else {
-                        "已合并本地与远端更新"
-                    }
-                )
-            }
         }
+        if (conflictStrategy == ConflictStrategy.KEEP_LOCAL && localChanged) {
+            local.vault.lastSyncedAt = now()
+            upload(remotePath, local, remoteKey)
+            return SyncResult(
+                container = local,
+                direction = SyncDirection.UPLOADED,
+                message = "已保留本地版本并覆盖云端"
+            )
+        }
+        if (conflictStrategy == ConflictStrategy.KEEP_REMOTE && remoteChanged) {
+            val adopted = remote.vault.copy(
+                lastSyncedAt = now(),
+                deviceId = local.vault.deviceId,
+                cloudKey = remote.vault.cloudKey.ifBlank { remoteKey }
+            )
+            return SyncResult(
+                container = local.withVault(adopted),
+                direction = SyncDirection.DOWNLOADED,
+                message = "已使用云端版本覆盖本地"
+            )
+        }
+
+        val merge = VaultMerger.merge(local.vault, remote.vault, last)
+        val mergedVault = merge.vault.copy(
+            name = if (remote.vault.updatedAt > local.vault.updatedAt) remote.vault.name else local.vault.name,
+            cloudKey = local.vault.cloudKey.ifBlank { remote.vault.cloudKey.ifBlank { remoteKey } },
+            deviceId = local.vault.deviceId
+        )
+
+        if (fingerprint(mergedVault) == fingerprint(remote.vault)) {
+            // 云端已经包含全部改动（常见于只有对端动过），本地换成合并结果就够了。
+            val adopted = mergedVault.copy(lastSyncedAt = now())
+            return SyncResult(
+                container = local.withVault(adopted),
+                direction = if (remoteChanged) SyncDirection.DOWNLOADED else SyncDirection.NONE,
+                conflicts = merge.conflicts,
+                message = when {
+                    merge.conflicts > 0 -> "已合并，产生 ${merge.conflicts} 个冲突副本"
+                    remoteChanged -> "已下载远端更新"
+                    else -> "已是最新状态"
+                }
+            )
+        }
+
+        val updated = mergedVault.copy(lastSyncedAt = now())
+        upload(remotePath, local.withVault(updated), remoteKey)
+        return SyncResult(
+            container = local.withVault(updated),
+            direction = SyncDirection.MERGED,
+            conflicts = merge.conflicts,
+            message = when {
+                merge.conflicts > 0 -> "已合并，产生 ${merge.conflicts} 个冲突副本"
+                remoteChanged -> "已合并本地与远端更新"
+                else -> "已上传本地更新"
+            }
+        )
+    }
+
+    /**
+     * 内容指纹：只看会同步的字段，且与列表顺序无关。
+     * 用来判断「合并结果是否已经在云端」，避免每次同步都白传一遍整库。
+     */
+    private fun fingerprint(vault: Vault): String {
+        val items = vault.items.sortedBy { it.id }
+            .joinToString("|") { "${it.id}:${it.updatedAt}:${it.status}:${it.title}" }
+        val labels = vault.labels.sortedBy { it.id }
+            .joinToString("|") { "${it.id}:${it.name}:${it.color}:${it.sortOrder}" }
+        val tombstones = vault.tombstones.sortedBy { it.id }
+            .joinToString("|") { "${it.id}:${it.deletedAt}" }
+        return "$items#$labels#$tombstones"
     }
 
     /**
@@ -319,4 +315,7 @@ class SyncEngine(
             webDav.put(config.manifestPath(), manifest.toJson().toByteArray(Charsets.UTF_8))
         }
     }
-}
+    private companion object {
+        /** 允许的时钟偏差：小于这个差值就当作「同一时刻」。 */
+        const val CLOCK_SKEW_MS = 3_000L
+    }}
