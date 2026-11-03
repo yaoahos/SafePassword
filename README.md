@@ -221,21 +221,21 @@ apps/android/build/outputs/apk/release/android-release.apk
 重命名并复制到 `dist/`：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.4.0-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.0-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose dist\SafePassword-1.4.0-release.apk
-aapt.exe dump badging dist\SafePassword-1.4.0-release.apk
+apksigner.bat verify --verbose dist\SafePassword-1.0.0-release.apk
+aapt.exe dump badging dist\SafePassword-1.0.0-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.yaoahos.safepassword`
-- `versionCode: 5`
-- `versionName: 1.4.0`
+- `versionCode: 1`
+- `versionName: 1.0.0`
 - `application-label: SafePassword`
 - APK Signature Scheme v2：通过
 - 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`
