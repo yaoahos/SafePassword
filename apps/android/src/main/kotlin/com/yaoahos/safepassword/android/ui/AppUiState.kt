@@ -47,6 +47,11 @@ data class AppUiState(
     val biometricSaved: Boolean = false,
     /** 新建/导入密码库后，提示用户开启指纹解锁。 */
     val fingerprintPrompt: Boolean = false,
+    /**
+     * 同步时发现云端已删除当前密码库（另一端删的）。
+     * 非空表示要弹窗让用户选「删除本地」还是「恢复到云端」。
+     */
+    val remoteDeletedName: String? = null,
     val dataVersion: Long = 0,
     // ---- 检查更新 / 自更新 ----
     val updateChecking: Boolean = false,

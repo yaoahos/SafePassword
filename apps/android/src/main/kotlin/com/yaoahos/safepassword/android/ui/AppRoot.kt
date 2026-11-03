@@ -291,6 +291,30 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                     )
                 }
 
+                if (state.remoteDeletedName != null) {
+                    AlertDialog(
+                        onDismissRequest = { },
+                        title = { Text("云端已删除该密码库") },
+                        text = {
+                            Text(
+                                "「${state.remoteDeletedName}」在其它设备上被删除了。\n\n" +
+                                    "删除本地：本机这份也一起删掉，两端保持一致。\n" +
+                                    "恢复到云端：保留本机这份，重新上传到云端。"
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { viewModel.deleteRemoteDeletedVault() }) {
+                                Text("删除本地")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { viewModel.restoreRemoteDeletedToCloud() }) {
+                                Text("恢复到云端")
+                            }
+                        }
+                    )
+                }
+
                 if (state.syncConflict) {
                     AlertDialog(
                         onDismissRequest = { viewModel.dismissSyncConflict() },
