@@ -8,8 +8,8 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
 - 正式 APK：`SafePassword-1.0.0-release.apk`
-- APK 大小：2,624,234 字节
-- SHA-256：`2584059A7D63B6B1EDF50033E01496C91C988B08257B01355ACFBB1F10CF1FE4`
+- APK 大小：2,607,850 字节
+- SHA-256：`881E3F119D7B6C5351F39180A501E69BEEC27E21F4BCC1B5C42DE19A37EFEFE2`
 - 发布下载：[Releases](https://github.com/yaoahos/SafePassword/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
@@ -253,7 +253,7 @@ aapt.exe dump badging dist\SafePassword-1.0.0-release.apk
 
 **恢复数据**
 
-- 从本地恢复：欢迎页选 `.sicv` 或导出文件 → 输入该文件主密码 → 可改名 → 进入密码库。
+- 从本地恢复：欢迎页选 `.spv` 导出文件 → 输入该文件主密码 → 可改名 → 进入密码库。
 - 从云端恢复：填 WebDAV 地址、用户名、密码、远程目录 → 「读取云端密码库」列出云端已有的库 → 选中一个 → 输入该库的主密码 → 下载并导入本地。失败会保留配置并提示原因。
 
 **日常使用**

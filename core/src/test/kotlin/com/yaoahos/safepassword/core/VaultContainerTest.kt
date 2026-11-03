@@ -60,8 +60,8 @@ class VaultContainerTest {
 
     @Test
     fun `file save and open`() {
-        val dir = Files.createTempDirectory("sicv-test")
-        val file = dir.resolve("vault.sicv")
+        val dir = Files.createTempDirectory("spv-test")
+        val file = dir.resolve("vault.spv")
         val container = VaultContainer.create(Vault(name = "文件库"), "password-123".toCharArray())
         container.saveTo(file)
         val reopened = VaultContainer.open(file, "password-123".toCharArray())
@@ -118,7 +118,7 @@ class VaultContainerTest {
     @Test
     fun `reads version 1 fixture`() {
         val password = resource("known1.password.txt").toString(Charsets.UTF_8).trim().toCharArray()
-        val bytes = resource("known1.sicv")
+        val bytes = resource("known1-v1.spv")
         assertEquals(1, headerVersion(bytes))
         val vault = VaultContainer.open(bytes, password).vault
         assertEquals("测试密码库🚀", vault.name)
@@ -128,7 +128,7 @@ class VaultContainerTest {
     @Test
     fun `reads version 2 fixture produced by desktop`() {
         val password = resource("known1.password.txt").toString(Charsets.UTF_8).trim().toCharArray()
-        val bytes = resource("known1.v2.spv")
+        val bytes = resource("known1-v2.spv")
         assertEquals(2, headerVersion(bytes))
         val vault = VaultContainer.open(bytes, password).vault
 
@@ -148,7 +148,7 @@ class VaultContainerTest {
     @Test
     fun `upgrading a version 1 vault rewrites it as version 2`() {
         val password = resource("known1.password.txt").toString(Charsets.UTF_8).trim().toCharArray()
-        val opened = VaultContainer.open(resource("known1.sicv"), password)
+        val opened = VaultContainer.open(resource("known1-v1.spv"), password)
         val rewritten = opened.toBytes()
         assertEquals(2, headerVersion(rewritten))
         val reopened = VaultContainer.open(rewritten, password)
