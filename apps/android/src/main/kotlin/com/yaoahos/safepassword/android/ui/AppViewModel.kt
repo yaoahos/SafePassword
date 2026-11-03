@@ -17,6 +17,8 @@ import com.yaoahos.safepassword.core.crypto.WrongPasswordException
 import com.yaoahos.safepassword.core.io.VaultXml
 import com.yaoahos.safepassword.core.io.VaultCodec
 import com.yaoahos.safepassword.core.io.AtomicFiles
+import com.yaoahos.safepassword.core.model.FieldHistory
+import com.yaoahos.safepassword.core.model.FieldType
 import com.yaoahos.safepassword.core.model.ItemStatus
 import com.yaoahos.safepassword.core.model.Label
 import com.yaoahos.safepassword.core.model.Vault
@@ -425,6 +427,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 item.updatedAt = now()
                 val index = session.vault.items.indexOfFirst { it.id == item.id }
                 if (index >= 0) {
+                    recordFieldHistory(session.vault.items[index], item)
                     session.vault.items[index] = item
                 } else {
                     item.createdAt = item.createdAt.takeIf { it > 0 } ?: now()
@@ -452,6 +455,71 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteItem(itemId: String) {
         changeStatus(itemId, ItemStatus.TRASHED)
+    }
+
+    /**
+     * 密码/秘密字段被改动时，把旧值记进历史。
+     *
+     * 只记敏感字段（TEXT 之类的旧值没有追溯价值，还会白白撑大密码库）；
+     * 同一字段最多保留 [MAX_FIELD_HISTORY] 条，最新的在前。
+     */
+    private fun recordFieldHistory(existing: VaultItem, updated: VaultItem) {
+        val previousValues = existing.fields.associateBy { it.id }
+        updated.fields.forEach { field ->
+            if (field.type != FieldType.PASSWORD && field.type != FieldType.SECRET) return@forEach
+            val previous = previousValues[field.id]?.value ?: return@forEach
+            if (previous == field.value || previous.isBlank()) return@forEach
+            field.history.add(0, FieldHistory(previous, now()))
+            while (field.history.size > MAX_FIELD_HISTORY) {
+                field.history.removeAt(field.history.size - 1)
+            }
+        }
+    }
+
+    fun deleteFieldHistory(itemId: String, fieldId: String, historyIndex: Int) {
+        mutateFieldHistory(itemId, fieldId) { history ->
+            if (historyIndex in history.indices) history.removeAt(historyIndex)
+        }
+    }
+
+    fun clearFieldHistory(itemId: String, fieldId: String) {
+        mutateFieldHistory(itemId, fieldId) { history -> history.clear() }
+    }
+
+    private fun mutateFieldHistory(
+        itemId: String,
+        fieldId: String,
+        block: (MutableList<FieldHistory>) -> Unit
+    ) {
+        val session = active ?: return
+        val index = session.vault.items.indexOfFirst { it.id == itemId }
+        if (index < 0) return
+        val item = session.vault.items[index]
+        val updated = item.copy(
+            fields = item.fields.map { field ->
+                if (field.id != fieldId) {
+                    field
+                } else {
+                    val copy = field.copy(history = field.history.toMutableList())
+                    block(copy.history)
+                    copy
+                }
+            }.toMutableList(),
+            updatedAt = now()
+        )
+        session.vault.items[index] = updated
+        session.vault.touch()
+        _state.update {
+            it.copy(activeVault = session.vault, dataVersion = it.dataVersion + 1)
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                persist()
+                scheduleSync()
+            } catch (e: Exception) {
+                fail(e)
+            }
+        }
     }
 
     fun deleteItems(itemIds: Set<String>) {
@@ -2012,6 +2080,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private companion object {
         /** 应用内最多展示 50 个版本的更新日志，更早的去 GitHub Releases 看。 */
         const val MAX_CHANGELOG_VERSIONS = 50
+
+        /** 单个密码/秘密字段最多保留的历史值条数。 */
+        const val MAX_FIELD_HISTORY = 20
     }
 
     /**
