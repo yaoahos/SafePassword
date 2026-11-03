@@ -6,7 +6,6 @@
 # ---- 签名与密钥（绝不提交）----
 *.keystore
 *.jks
-!debug.keystore
 keystore.properties
 keystore/*.properties
 
