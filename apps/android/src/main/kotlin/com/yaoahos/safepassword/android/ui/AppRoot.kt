@@ -292,14 +292,16 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                 }
 
                 if (state.remoteDeletedName != null) {
+                    val pending = state.syncStatus.contains("未同步的修改")
                     AlertDialog(
                         onDismissRequest = { },
                         title = { Text("云端已删除该密码库") },
                         text = {
                             Text(
-                                "「${state.remoteDeletedName}」在其它设备上被删除了。\n\n" +
-                                    "删除本地：本机这份也一起删掉，两端保持一致。\n" +
-                                    "恢复到云端：保留本机这份，重新上传到云端。"
+                                "「${state.remoteDeletedName}」在其它设备上被删除了。" +
+                                    if (pending) "\n\n本机这份还有未同步的修改，删除本地会一并丢失。" else "" +
+                                    "\n\n删除本地：本机这份也一起删掉，两端保持一致。" +
+                                    "\n恢复到云端：保留本机这份，重新上传到云端。"
                             )
                         },
                         confirmButton = {

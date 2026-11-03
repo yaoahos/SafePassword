@@ -9,6 +9,10 @@ import java.security.MessageDigest
  *
  * 云端文件名必须是纯 ASCII（有些网盘对中文文件名支持很差），所以文件名里不放库名。
  * 清单把「传输用的 key」映射回「人看的名字」，同时带更新时间和大小，供恢复时选择。
+ *
+ * 删除不做墓碑标记：桌面端（SafePasswordDesktop `sp/cloud.rs`）的清单只有 `vaults`，
+ * 写回时会把多出来的字段丢掉。判定「云端已删除」统一按
+ * 「曾同步过（lastSyncedAt > 0）+ 云端文件确实不存在」来做，两端规则一致才不会互相打架。
  */
 @Serializable
 data class CloudVaultEntry(
@@ -20,36 +24,18 @@ data class CloudVaultEntry(
 
 @Serializable
 data class CloudManifest(
-    var vaults: MutableList<CloudVaultEntry> = mutableListOf(),
-    /**
-     * 已删除密码库的墓碑。
-     *
-     * 只删文件不够：另一台设备还留着本地副本，下次同步发现「云端没有」就会
-     * 重新上传，两边立刻分叉。墓碑记下删除时间，其它设备据此同步删除本地副本。
-     */
-    var deleted: MutableList<CloudVaultEntry> = mutableListOf()
+    var vaults: MutableList<CloudVaultEntry> = mutableListOf()
 ) {
     fun upsert(key: String, name: String, updatedAt: Long, size: Long) {
         val position = vaults.indexOfFirst { it.key == key }
         val entry = CloudVaultEntry(key, name, updatedAt, size)
         if (position >= 0) vaults[position] = entry else vaults.add(entry)
-        deleted.removeAll { it.key == key }
     }
 
+    /** 移除指定条目（云端密码库删除 / 改名后清理旧键）。 */
     fun remove(key: String) {
         vaults.removeAll { it.key == key }
-        deleted.removeAll { it.key == key }
     }
-
-    /** 记一条删除墓碑，供其它设备识别「这个库是被主动删掉的」。 */
-    fun markDeleted(key: String, name: String, at: Long) {
-        vaults.removeAll { it.key == key }
-        deleted.removeAll { it.key == key }
-        deleted.add(CloudVaultEntry(key, name, at, 0))
-    }
-
-    /** 该键被删除的时间；没有墓碑返回 0。 */
-    fun deletedAt(key: String): Long = deleted.firstOrNull { it.key == key }?.updatedAt ?: 0
 
     fun toJson(): String = AppJson.instance.encodeToString(serializer(), this)
 
