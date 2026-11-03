@@ -482,9 +482,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun clearFieldHistory(itemId: String, fieldId: String) {
-        mutateFieldHistory(itemId, fieldId) { history -> history.clear() }
-    }
 
     private fun mutateFieldHistory(
         itemId: String,

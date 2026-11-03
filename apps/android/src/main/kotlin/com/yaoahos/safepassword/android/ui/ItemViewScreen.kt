@@ -485,7 +485,6 @@ fun ItemViewScreen(viewModel: AppViewModel, state: AppUiState, itemId: String) {
                 field = field,
                 onCopy = { copyValue(it) },
                 onDelete = { index -> viewModel.deleteFieldHistory(item.id, fieldId, index) },
-                onClear = { viewModel.clearFieldHistory(item.id, fieldId) },
                 onDismiss = { historyFieldId = null }
             )
         }
@@ -679,30 +678,20 @@ private fun FieldHistoryDialog(
     field: Field,
     onCopy: (String) -> Unit,
     onDelete: (Int) -> Unit,
-    onClear: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    var revealed by remember(field.id) { mutableStateOf(false) }
-    var confirmClear by remember(field.id) { mutableStateOf(false) }
+    // 每条自己控制显示/隐藏，互不影响。
+    var revealedRows by remember(field.id) { mutableStateOf(setOf<Long>()) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("历史记录")
-                    Text(
-                        "${field.label} · ${field.history.size} 条",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = { revealed = !revealed }) {
-                    Icon(
-                        if (revealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                        contentDescription = if (revealed) "隐藏历史值" else "显示历史值",
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+            Column {
+                Text("历史记录")
+                Text(
+                    "${field.label} · ${field.history.size} 条",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         },
         text = {
@@ -712,13 +701,14 @@ private fun FieldHistoryDialog(
                     .verticalScroll(rememberScrollState())
             ) {
                 field.history.forEachIndexed { index, entry ->
+                    val rowShown = entry.changedAt in revealedRows
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                if (revealed) entry.value
+                                if (rowShown) entry.value
                                 else "•".repeat(entry.value.length.coerceIn(8, 16)),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium
@@ -727,6 +717,20 @@ private fun FieldHistoryDialog(
                                 detailDate(entry.changedAt),
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                revealedRows = if (rowShown) revealedRows - entry.changedAt
+                                else revealedRows + entry.changedAt
+                            },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                if (rowShown) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                contentDescription = if (rowShown) "隐藏这条" else "显示这条",
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         IconButton(onClick = { onCopy(entry.value) }, modifier = Modifier.size(30.dp)) {
@@ -751,25 +755,6 @@ private fun FieldHistoryDialog(
                             thickness = 1.dp,
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
                         )
-                    }
-                }
-                if (confirmClear) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "清空后无法恢复",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(onClick = {
-                            confirmClear = false
-                            onClear()
-                        }) { Text("确定清空", color = MaterialTheme.colorScheme.error) }
-                        TextButton(onClick = { confirmClear = false }) { Text("取消") }
-                    }
-                } else {
-                    TextButton(onClick = { confirmClear = true }) {
-                        Text("清空全部", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                     }
                 }
             }
