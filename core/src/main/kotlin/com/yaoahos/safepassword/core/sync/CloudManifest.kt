@@ -49,11 +49,26 @@ data class CloudManifest(
         /**
          * 密码库内容密钥 → 云端键。
          *
-         * 与桌面端 `key_for_content` 完全一致：`k` + contentKey 原始字节的小写 hex。
+         * 与桌面端 `key_for_content` 一致：`k` + contentKey 前 8 字节的小写 hex（共 17 字符）。
          * contentKey 是建库时随机生成的 32 字节，改名、改主密码都不会变，
-         * 所以它就是这个密码库的身份——键因此唯一且终身不变，改名不会换云端文件。
+         * 所以它就是这个密码库的身份——键因此唯一且终身不变。
+         * 只取前 8 字节是为了文件名短一些（64 位随机，实际不会撞）。
          */
         fun keyForContent(contentKey: String): String? {
+            val trimmed = contentKey.trim()
+            if (trimmed.isEmpty()) return null
+            val bytes = runCatching {
+                java.util.Base64.getDecoder().decode(trimmed)
+            }.getOrNull() ?: return null
+            if (bytes.isEmpty()) return null
+            return "k" + bytes.take(8).joinToString("") { "%02x".format(it) }
+        }
+
+        /**
+         * 上一版用完整 contentKey 生成的键（`k` + 64 位 hex）。
+         * 只用于升级时认领旧文件，认领后按新键重新上传。
+         */
+        fun legacyKeyForContent(contentKey: String): String? {
             val trimmed = contentKey.trim()
             if (trimmed.isEmpty()) return null
             val bytes = runCatching {
