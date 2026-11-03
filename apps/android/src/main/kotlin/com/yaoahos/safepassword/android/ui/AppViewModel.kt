@@ -1029,10 +1029,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (!config.isConfigured()) return
         if (_state.value.busy || _state.value.syncConflict) return
         val remoteKey = session.vault.cloudKey.ifBlank { CloudManifest.keyFor(session.vault.name) }
-            val remotePath = config.remotePath(remoteKey)
+        val remotePath = config.remotePath(remoteKey)
         val client = WebDavClient(config, OkHttp.create())
         try {
-            val stat = client.stat(remotePath) ?: client.stat(config.legacyRemotePath()) ?: return
+            val stat = client.stat(remotePath) ?: client.stat(config.legacyRemotePath())
+            if (stat == null) {
+                // 云端文件不在了：可能被别的设备删掉了。stat 拿不到时间戳，
+                // 只能去读清单里的墓碑；有更新的墓碑就让 doSync 走删除判定，
+                // 没有的话说明这份库还没上传过，交给常规同步去补齐。
+                val manifest = CloudManifest.parse(
+                    client.get(config.manifestPath())?.toString(Charsets.UTF_8)
+                )
+                val deletedAt = manifest.deletedAt(remoteKey)
+                if (deletedAt > 0 && session.vault.updatedAt <= deletedAt) {
+                    doSync(silent = true)
+                }
+                return
+            }
             val changed = when {
                 // 服务器没给 Last-Modified，只能保守地认为有变化。
                 stat.lastModified <= 0 -> true
