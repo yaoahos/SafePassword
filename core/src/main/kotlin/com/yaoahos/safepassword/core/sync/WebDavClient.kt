@@ -40,7 +40,7 @@ data class WebDavConfig(
     /** 每个密码库一个云端文件：SafePassword-<ASCII 键>.spv，避免中文文件名与多库互相覆盖。 */
     fun remotePath(vaultKey: String): String = "${normalizedDir()}/SafePassword-$vaultKey.spv"
 
-    /** 旧版单文件布局；升级后只用于读取回退，写入一律走 remotePath(vaultKey)。 */
+    /** 根目录单文件路径：仅用于读取回退，写入一律走 remotePath(vaultKey)。 */
     fun legacyRemotePath(): String = "${normalizedDir()}/SafePassword.spv"
 
 
@@ -227,7 +227,7 @@ class WebDavClient(
 
     /**
      * 列出目录下的文件（PROPFIND Depth 1）。清单文件缺失时用它兜底，
-     * 这样 1.4.1 之前按名称命名的云端文件也能被「从云端恢复」发现。
+     * 这样按名称命名的云端文件也能被「从云端恢复」发现。
      */
     suspend fun list(path: String): List<RemoteEntry> {
         val response = client.request(url(path)) {

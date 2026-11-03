@@ -132,9 +132,9 @@ class SyncEngine(
         var remoteBytes = webDav.get(remotePath)
         var adoptedLegacy: VaultContainer? = null
         if (remoteBytes == null) {
-            // 升级迁移：旧版文件只有内容密钥一致（同一密码库）才认领，
+            // 认领已有的云端文件：只有内容密钥一致（同一密码库）才认领，
             // 否则视为云端还没有本库文件，直接上传本地，避免读到别的密码库的数据。
-            // 依次尝试：旧版单文件 SafePassword.spv → 1.4.1 的按库名键。
+            // 依次尝试：根目录单文件 → 按库名派生的键。
             // 旧布局：单文件 SafePassword.spv，以及按库名哈希命名的老文件（清单里还记着键）。
             val claimedKey = runCatching { manifestEntryFor(local.vault.name)?.key }.getOrNull()
             val candidates = listOfNotNull(

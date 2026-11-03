@@ -287,7 +287,7 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
                                     Text(entry.name, fontWeight = FontWeight.Medium)
                                     Text(
                                         if (entry.updatedAt > 0) "云端更新时间：${formatDate(entry.updatedAt)}"
-                                        else "旧版单文件布局",
+                                        else "单文件布局",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )

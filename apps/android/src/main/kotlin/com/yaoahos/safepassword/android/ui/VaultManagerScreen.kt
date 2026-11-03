@@ -158,7 +158,7 @@ fun VaultManagerScreen(viewModel: AppViewModel, state: AppUiState) {
                                 Text(entry.name, fontWeight = FontWeight.Medium)
                                 Text(
                                     if (entry.updatedAt > 0) "云端 · ${formatDate(entry.updatedAt)}"
-                                    else "云端 · 旧版单文件",
+                                    else "云端 · 单文件",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

@@ -86,7 +86,7 @@ class VaultContainer private constructor(
         /** 当前写出的版本：payload 先 gzip 再加密。 */
         private const val WRITE_VERSION = 2
 
-        /** 仍可读取的旧版本：payload 就是明文 JSON。 */
+        /** 不压缩的容器：payload 就是明文 JSON。 */
         private const val PLAIN_VERSION = 1
 
         /** 解压后的明文上限，防压缩炸弹。 */
