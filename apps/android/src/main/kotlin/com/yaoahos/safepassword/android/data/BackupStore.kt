@@ -40,7 +40,7 @@ class BackupStore(private val context: Context) {
     fun list(treeUri: String): List<BackupEntry> {
         val tree = tree(treeUri) ?: return emptyList()
         return tree.listFiles()
-            .filter { it.isFile && (it.name?.endsWith(".spv") == true || it.name?.endsWith(".sicv") == true) }
+            .filter { it.isFile && it.name?.endsWith(".spv") == true }
             .map { file ->
                 BackupEntry(
                     uri = file.uri,

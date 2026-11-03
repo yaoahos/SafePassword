@@ -413,7 +413,7 @@ fun RestoreVaultDialog(
             uri = picked
             fileName = queryDisplayName(context, picked)
             if (name == "我的密码库") {
-                name = fileName.removeSuffix(".spv").removeSuffix(".sicv").removeSuffix(".db")
+                name = fileName.removeSuffix(".spv")
             }
         }
     }

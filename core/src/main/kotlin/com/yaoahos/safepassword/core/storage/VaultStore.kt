@@ -19,6 +19,15 @@ class VaultStore(private val root: Path) {
 
     init {
         Files.createDirectories(vaultsDir)
+        // 本地库文件统一使用 .spv；扩展名不同的历史文件就地改名，避免库里看不见。
+        runCatching {
+            Files.newDirectoryStream(vaultsDir, "*.sicv").use { stream ->
+                for (path in stream) {
+                    val target = path.resolveSibling(path.fileName.toString().removeSuffix(".sicv") + ".spv")
+                    if (!Files.exists(target)) Files.move(path, target)
+                }
+            }
+        }
     }
 
     fun vaultFile(meta: VaultMeta): Path = vaultsDir.resolve(meta.fileName)
@@ -33,13 +42,13 @@ class VaultStore(private val root: Path) {
             changed = true
         }
         val known = index.vaults.map { it.fileName }.toSet()
-        Files.newDirectoryStream(vaultsDir, "*.sicv").use { stream ->
+        Files.newDirectoryStream(vaultsDir, "*.spv").use { stream ->
             for (path in stream) {
                 val fileName = path.fileName.toString()
                 if (fileName !in known) {
                     index.vaults.add(
                         VaultMeta(
-                            id = fileName.removeSuffix(".sicv"),
+                            id = fileName.removeSuffix(".spv"),
                             name = "密码库",
                             fileName = fileName,
                             createdAt = Files.getLastModifiedTime(path).toMillis(),
@@ -61,7 +70,7 @@ class VaultStore(private val root: Path) {
             // 云端键在这里一次生成、终身不变；改名只改显示名，不换云端文件。
         )
         val container = VaultContainer.create(vault, password)
-        val fileName = "${vault.id}.sicv"
+        val fileName = "${vault.id}.spv"
         val meta = VaultMeta(
             id = vault.id,
             name = vault.name,
@@ -142,7 +151,7 @@ class VaultStore(private val root: Path) {
 
     private fun createFromVault(vault: Vault, password: CharArray): Pair<VaultContainer, VaultMeta> {
         val container = VaultContainer.create(vault, password)
-        val fileName = "${vault.id}.sicv"
+        val fileName = "${vault.id}.spv"
         val meta = VaultMeta(
             id = vault.id,
             name = vault.name,
