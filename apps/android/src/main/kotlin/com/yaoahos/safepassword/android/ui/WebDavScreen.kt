@@ -65,9 +65,10 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
 
     // 同步状态与首页一致：显示 3 秒后自动消失，只常驻“上次同步”时间。
     var visibleSyncStatus by remember { mutableStateOf("") }
-    LaunchedEffect(state.syncStatus, state.syncStatusAt) {
+    LaunchedEffect(state.syncStatus, state.syncStatusAt, state.syncStatusInWebDav) {
         val elapsed = System.currentTimeMillis() - state.syncStatusAt
-        if (state.syncStatus.isBlank() || elapsed >= 3000L) {
+        // 只显示「本页发起」的同步状态；首页发起的那条留在首页。
+        if (!state.syncStatusInWebDav || state.syncStatus.isBlank() || elapsed >= 3000L) {
             visibleSyncStatus = ""
         } else {
             visibleSyncStatus = state.syncStatus

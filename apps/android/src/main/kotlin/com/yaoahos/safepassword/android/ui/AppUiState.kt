@@ -38,6 +38,13 @@ data class AppUiState(
     val webDav: WebDavConfig = WebDavConfig(),
     val syncStatus: String = "",
     val syncStatusAt: Long = 0L,
+    /**
+     * 这条同步状态属于哪个页面（false = 首页，true = WebDAV 页）。
+     *
+     * 两个页面都会显示同步状态，状态本身是全局的；不区分归属的话，
+     * 首页发起的同步会飘到 WebDAV 页的「保存后自动同步」下面，反之亦然。
+     */
+    val syncStatusInWebDav: Boolean = false,
     val syncConflict: Boolean = false,
     val backups: List<BackupEntry> = emptyList(),
     /** 「从云端恢复」列出的云端密码库（来自云端清单）。 */

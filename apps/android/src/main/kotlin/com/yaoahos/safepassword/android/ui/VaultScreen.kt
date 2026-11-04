@@ -102,9 +102,10 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
     var searchFocused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(state.syncStatus, state.syncStatusAt) {
+    LaunchedEffect(state.syncStatus, state.syncStatusAt, state.syncStatusInWebDav) {
         val elapsed = System.currentTimeMillis() - state.syncStatusAt
-        if (state.syncStatus.isBlank() || elapsed >= 3000L) {
+        // 只显示「首页发起」的同步状态；WebDAV 页发起的那条留在那一页。
+        if (state.syncStatusInWebDav || state.syncStatus.isBlank() || elapsed >= 3000L) {
             visibleSyncStatus = ""
         } else {
             visibleSyncStatus = state.syncStatus
