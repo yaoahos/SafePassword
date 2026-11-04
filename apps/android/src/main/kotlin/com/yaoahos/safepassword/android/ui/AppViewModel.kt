@@ -891,7 +891,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return id.takeIf { vault?.labels?.any { label -> label.id == id } == true }
     }
     fun navigate(screen: Screen) = _state.update { state ->
-        when (screen) {
+        val next = when (screen) {
             Screen.Vault, Screen.Tools, Screen.Unlock -> state.copy(
                 screen = screen,
                 originTab = if (screen == Screen.Unlock) state.originTab else screen,
@@ -904,6 +904,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 navForward = true
             )
         }
+        // 同步状态属于「刚才那个页面」：换页就清掉，否则首页同步的提示会跟到
+        // WebDAV 页、WebDAV 页同步的提示又跟回首页，同一件事说了两遍。
+        if (next.screen != state.screen) next.copy(syncStatus = "") else next
     }
     fun consumeMessage() = _state.update { it.copy(message = null) }
     fun consumeError() = _state.update { it.copy(error = null) }
@@ -1082,7 +1085,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             fail("请先填写 WebDAV 配置")
             return
         }
-        _state.update { it.copy(busy = true, syncStatus = "正在拉取云端数据…", error = null) }
+        _state.update {
+            it.copy(
+                busy = true,
+                syncStatus = "正在拉取云端数据…",
+                syncStatusInWebDav = true,
+                error = null
+            )
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val client = WebDavClient(config, OkHttp.create())
             try {
@@ -1103,6 +1113,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         vaults = container.vaultStore.list(),
                         busy = false,
                         syncStatus = result.message,
+                        syncStatusInWebDav = true,
                         message = if (showsSyncStatusInline()) it.message else result.message,
                         security = SecurityAnalyzer.analyze(result.container.vault, it.breached),
                         dataVersion = it.dataVersion + 1
@@ -1218,8 +1229,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (!silent) fail("请先在设置中配置 WebDAV")
             return
         }
+        // 同步状态只归属「发起同步的页面」：首页发起的留在首页，WebDAV 页发起的留在 WebDAV 页。
+        val statusInWebDav = _state.value.screen is Screen.WebDav
         if (!silent) _state.update {
-            it.copy(busy = true, syncStatus = "正在同步…", syncStatusAt = now(), error = null)
+            it.copy(
+                busy = true,
+                syncStatus = "正在同步…",
+                syncStatusAt = now(),
+                syncStatusInWebDav = statusInWebDav,
+                error = null
+            )
         }
         val client = WebDavClient(config, OkHttp.create())
         try {
@@ -1275,6 +1294,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     syncStatus = result.message,
                     syncStatusAt = now(),
                     nameConflictPending = false,
+                    syncStatusInWebDav = statusInWebDav,
                     message = if (silent || showsSyncStatusInline()) it.message else result.message,
                     security = SecurityAnalyzer.analyze(result.container.vault, it.breached),
                     dataVersion = it.dataVersion + 1
@@ -1289,7 +1309,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(
                         busy = false,
                         syncStatus = "自动同步失败：${e.message}",
-                        syncStatusAt = now()
+                        syncStatusAt = now(),
+                        syncStatusInWebDav = statusInWebDav
                     )
                 }
             } else {
@@ -1637,7 +1658,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         container.settings.webDav = config
         _state.update {
-            it.copy(webDav = config, cloudVaultsLoading = true, error = null, syncStatus = "正在读取云端密码库…")
+            it.copy(webDav = config, cloudVaultsLoading = true, error = null, syncStatus = "正在读取云端密码库…", syncStatusInWebDav = true)
         }
         viewModelScope.launch(Dispatchers.IO) {
             val client = WebDavClient(config, OkHttp.create())
@@ -1698,12 +1719,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         container.settings.webDav = config
-        _state.update { it.copy(webDav = config, busy = true, error = null, syncStatus = "正在连接云…") }
+        _state.update { it.copy(webDav = config, busy = true, error = null, syncStatus = "正在连接云…", syncStatusInWebDav = true) }
         viewModelScope.launch(Dispatchers.IO) {
             val client = WebDavClient(config, OkHttp.create())
             try {
                 client.test()
-                _state.update { it.copy(syncStatus = "云连接成功，正在下载…") }
+                _state.update { it.copy(syncStatus = "云连接成功，正在下载…", syncStatusInWebDav = true) }
                 val path = if (key.isBlank()) config.legacyRemotePath() else config.remotePath(key)
                 val bytes = client.get(path) ?: error("云端没有找到这个密码库的文件，可能已被删除")
                 val (opened, meta) = container.vaultStore.importEncrypted(bytes, password.toCharArray(), trimmedName)
