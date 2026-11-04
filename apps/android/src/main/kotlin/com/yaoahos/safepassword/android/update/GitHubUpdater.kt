@@ -26,6 +26,9 @@ data class GitHubRelease(
     val assets: List<GitHubAsset> = emptyList()
 )
 
+/** GitHub 限流（未登录每月 60 次/IP）；重试无用，需要让用户等窗口重置。 */
+class RateLimitedException(message: String) : Exception(message)
+
 /** 通过 GitHub Releases API 检查并下载新版本。 */
 object GitHubUpdater {
     const val REPO = "yaoahos/SafePassword"
@@ -39,7 +42,32 @@ object GitHubUpdater {
         isLenient = true
     }
 
-    fun fetchReleases(): List<GitHubRelease> {
+    /**
+     * 拉取发布列表。
+     *
+     * 刚装好应用或刚连上网络时，头几次请求偶尔会失败（DNS 还没就绪、TLS 握手被掐、
+     * 代理/VPN 正在切换路由）。这些都是瞬时的，重试一两次基本就过去了；
+     * 但 403/429 是 GitHub 限流（未登录每 IP 每小时 60 次），重试没有意义，直接抛出去。
+     */
+    fun fetchReleases(attempts: Int = 3): List<GitHubRelease> {
+        var lastError: Exception? = null
+        for (attempt in 1..attempts) {
+            try {
+                return requestOnce()
+            } catch (e: RateLimitedException) {
+                throw e
+            } catch (e: Exception) {
+                lastError = e
+                if (attempt < attempts) {
+                    // 700ms → 1600ms，给网络栈一点时间把 DNS/连接准备好。
+                    Thread.sleep(700L * attempt)
+                }
+            }
+        }
+        throw lastError ?: IllegalStateException("检查更新失败")
+    }
+
+    private fun requestOnce(): List<GitHubRelease> {
         val connection = (URL(RELEASES_API).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
             readTimeout = 20_000
@@ -49,8 +77,17 @@ object GitHubUpdater {
         }
         try {
             val code = connection.responseCode
+            if (code == 403 || code == 429) {
+                // 未登录调用有配额：剩余次数为 0 时会被拒，窗口按小时重置。
+                val remaining = connection.getHeaderField("X-RateLimit-Remaining")
+                val reset = connection.getHeaderField("X-RateLimit-Reset")
+                connection.errorStream?.bufferedReader()?.use { it.readText() }
+                throw RateLimitedException(
+                    "GitHub 限流：剩余 $remaining 次" + if (reset.isNullOrBlank()) "" else "，重置时间戳 $reset"
+                )
+            }
             if (code !in 200..299) {
-                // 403/429 是限流，200 但内容不是 JSON 是被中间设备劫持改写。
+                // 200 但内容不是 JSON 是被中间设备劫持改写。
                 val detail = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
                 throw IllegalStateException(
                     "GitHub 返回 HTTP $code" + if (detail.isBlank()) "" else "：${detail.take(160)}"
