@@ -10,6 +10,7 @@ import com.yaoahos.safepassword.android.data.AppSettings
 import com.yaoahos.safepassword.android.data.BackupEntry
 import com.yaoahos.safepassword.android.security.BiometricHelper
 import com.yaoahos.safepassword.android.update.GitHubUpdater
+import com.yaoahos.safepassword.android.update.RateLimitedException
 import com.yaoahos.safepassword.android.update.UpdateLog
 import com.yaoahos.safepassword.android.update.UpdateNotifications
 import com.yaoahos.safepassword.core.crypto.VaultContainer
@@ -1860,7 +1861,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 // 网络失败、超时、GitHub 限流或返回异常内容都归到这一类，只给用户可读提示。
                 android.util.Log.w("AppViewModel", "检查更新失败", e)
-                if (!quiet) showMessage("检查更新失败，请检查网络后重试")
+                if (!quiet) showMessage(updateErrorMessage(e))
             } finally {
                 _state.update { it.copy(updateChecking = false) }
             }
@@ -2272,6 +2273,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun showsSyncStatusInline(): Boolean = when (_state.value.screen) {
         Screen.Vault, is Screen.WebDav -> true
         else -> false
+    }
+
+    /**
+     * 检查更新的错误要分开说：限流和断网是完全不同的应对方式。
+     *
+     * GitHub 未登录调用有配额（每小时 60 次/IP），共享出口 IP（公司网、VPN 池）
+     * 很容易被别人用光，这时候提示「检查网络」会让人误以为是自己的网不好。
+     */
+    private fun updateErrorMessage(e: Throwable): String {
+        if (e is RateLimitedException) {
+            return "GitHub 请求次数已达上限，请过一会儿再试"
+        }
+        return networkErrorText(e, "检查更新失败，请稍后重试")
     }
 
     private fun fail(e: Throwable) {
