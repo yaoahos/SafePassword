@@ -107,6 +107,7 @@ class SyncEngine(
      */
     suspend fun restoreToCloud(local: VaultContainer): SyncResult {
         val remoteKey = resolveKey(local)
+        detectNameConflict(local, remoteKey)?.let { return nameConflict(local, it) }
         local.ensureContentKey()
         local.vault.touch()
         local.vault.lastSyncedAt = local.vault.updatedAt
@@ -152,6 +153,10 @@ class SyncEngine(
         // 云端既没有本库文件、也没有可认领的旧文件时判为「被删了」。
         // 与桌面端同一套规则：不看墓碑，只看「曾同步过 + 文件确实没了」。
         if (remoteBytes == null && local.vault.lastSyncedAt > 0) {
+            // 兼容旧版误判留下的状态：本库「同步过」但文件不见了，
+            // 如果清单里有同名不同键的库，那其实是同名冲突而不是被删，
+            // 先按同名冲突提示用户改名，别让人以为云端把库删了。
+            detectNameConflict(local, remoteKey)?.let { return nameConflict(local, it) }
             val pending = local.vault.updatedAt > local.vault.lastSyncedAt + CLOCK_SKEW_MS
             return SyncResult(
                 container = local,
@@ -164,6 +169,11 @@ class SyncEngine(
             )
         }
         if (remoteBytes == null) {
+            // 同名检查必须放在改动本地状态之前。
+            // 下面会把 lastSyncedAt 推到 now()、touch() 抬高 updatedAt，
+            // 一旦上传被同名挡住又不回退，下一次同步就会以为「本库同步过、文件却没了」，
+            // 从而误报「云端已删除该密码库」。
+            detectNameConflict(local, remoteKey)?.let { return nameConflict(local, it) }
             local.ensureContentKey()
             local.vault.lastSyncedAt = now()
             local.vault.touch()
@@ -204,6 +214,7 @@ class SyncEngine(
             )
         }
         if (conflictStrategy == ConflictStrategy.KEEP_LOCAL && localChanged) {
+            detectNameConflict(local, remoteKey)?.let { return nameConflict(local, it) }
             local.vault.lastSyncedAt = now()
             upload(remotePath, local, remoteKey)?.let { return nameConflict(local, it) }
             return SyncResult(
@@ -249,6 +260,7 @@ class SyncEngine(
         }
 
         val updated = mergedVault.copy(lastSyncedAt = now())
+        detectNameConflict(local, remoteKey)?.let { return nameConflict(local, it) }
         upload(remotePath, local.withVault(updated), remoteKey)
             ?.let { return nameConflict(local.withVault(updated), it) }
         return SyncResult(
@@ -261,6 +273,28 @@ class SyncEngine(
                 else -> "已上传本地更新"
             }
         )
+    }
+
+    /**
+     * 只读地检查「云端是否已有同名但不同键的库」。
+     *
+     * 上传前先查一次，是为了在改动本地状态之前就能干净地退出：
+     * 一旦上传被同名挡住，本地的 lastSyncedAt/updatedAt 不能被改过。
+     */
+    private suspend fun detectNameConflict(local: VaultContainer, remoteKey: String): String? {
+        val text = try {
+            webDav.get(config.manifestPath())?.toString(Charsets.UTF_8)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 读不到清单就不判冲突，交给 upload() 里的同一套逻辑处理。
+            return null
+        }
+        val manifest = CloudManifest.parse(text)
+        val want = local.vault.name.trim().lowercase()
+        return manifest.vaults
+            .firstOrNull { it.key != remoteKey && it.name.trim().lowercase() == want }
+            ?.name
     }
 
     /**

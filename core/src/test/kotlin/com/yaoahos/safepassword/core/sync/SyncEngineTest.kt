@@ -126,4 +126,43 @@ class SyncEngineTest {
             webDav.close()
         }
     }
+
+    @Test
+    fun `same name vault in cloud is reported as name conflict, never as deleted`() = runBlocking {
+        val t = now()
+        val localKey = VaultContainer.create(Vault(), password).vault.contentKey
+        val otherKey = VaultContainer.create(Vault().apply { name = "测试库" }, password).vault.contentKey
+
+        // 本地这个库「同步过」但云端没有它的文件；云端另有一个同名、不同内容密钥的库。
+        val localVault = vaultWith(localKey, t, t - 10_000, listOf(item("a", t - 9_000)))
+        localVault.cloudKey = requireNotNull(CloudManifest.keyForContent(localKey))
+        val otherVault = vaultWith(otherKey, t - 5_000, t - 5_000, listOf(item("z", t - 6_000)))
+
+        val fake = FakeDav()
+        val config = WebDavConfig(baseUrl = "https://dav.example.com/")
+        val otherKeyPath = config.remotePath(requireNotNull(CloudManifest.keyForContent(otherKey)))
+        fake.files[otherKeyPath] = VaultContainer.create(otherVault, password).toBytes()
+        val otherEntryKey = requireNotNull(CloudManifest.keyForContent(otherKey))
+        fake.files[config.manifestPath()] = CloudManifest().apply {
+            upsert(otherEntryKey, "测试库", t - 5_000, 1)
+        }.toJson().toByteArray(Charsets.UTF_8)
+
+        val webDav = WebDavClient(config, fake.engine())
+        try {
+            val engine = SyncEngine(webDav, config)
+            val first = engine.sync(VaultContainer.create(localVault, password), password)
+            assertEquals(SyncDirection.NAME_CONFLICT, first.direction)
+
+            // 关掉弹窗后再同步一次：仍应是同名冲突，
+            // 不能因为上一次尝试动过 lastSyncedAt 就误报「云端已删除」。
+            val second = engine.sync(VaultContainer.create(localVault, password), password)
+            assertEquals(SyncDirection.NAME_CONFLICT, second.direction)
+
+            // 另一个库的云端文件必须原封不动。
+            val other = VaultContainer.open(fake.files.getValue(otherKeyPath), password)
+            assertEquals(listOf("z"), other.vault.items.map { it.id })
+        } finally {
+            webDav.close()
+        }
+    }
 }
