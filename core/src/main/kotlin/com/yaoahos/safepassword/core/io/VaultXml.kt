@@ -21,10 +21,20 @@ import javax.xml.transform.dom.DOMSource
 import javax.xml.transform.stream.StreamResult
 
 /** 从兼容格式的 XML 解析出的条目，标签以名称而非数字 id 表示。 */
+/** 兼容格式里的标签引用：名称 + 可选的显示颜色与排序。 */
+data class XmlLabelRef(
+    val name: String,
+    val color: Int? = null,
+    val sortOrder: Int? = null
+)
+
 data class XmlCard(
     val item: VaultItem,
-    val labelNames: List<String>
-)
+    val labelRefs: List<XmlLabelRef>
+) {
+    /** 仅为兼容旧调用点保留：只取名称。 */
+    val labelNames: List<String> get() = labelRefs.map { it.name }
+}
 
 /**
  * 解析原版密码管理器导出的 XML（兼容格式，根节点为 database）。
@@ -47,7 +57,15 @@ object VaultXml {
         val labels = root.childElements("label").mapNotNull { label ->
             val id = label.attr("id").trim()
             val name = label.attr("name").trim()
-            if (id.isBlank() || name.isBlank()) null else id to name
+            if (id.isBlank() || name.isBlank()) {
+                null
+            } else {
+                id to XmlLabelRef(
+                    name = name,
+                    color = parseLabelColor(label.attr("color")),
+                    sortOrder = label.attr("sort-order").trim().toIntOrNull()
+                )
+            }
         }.toMap()
 
         return root.childElements("card").mapNotNull { card ->
@@ -70,6 +88,9 @@ object VaultXml {
             val element = document.createElement("label")
             element.setAttribute("id", labelIds.getValue(label.id))
             element.setAttribute("name", label.name)
+            // 自定义属性：只是本应用的补充信息，其它客户端读到会忽略。
+            element.setAttribute("color", "#%06X".format(label.color and 0xFFFFFF))
+            element.setAttribute("sort-order", label.sortOrder.toString())
             root.appendChild(element)
         }
 
@@ -148,6 +169,8 @@ object VaultXml {
     private fun exportType(field: Field): String {
         val label = field.label.lowercase()
         return when {
+            // 类型优先于名称猜测：SECRET 绝不能因为标签里带「密码」就被导出成 password。
+            field.type == FieldType.SECRET -> "secret"
             label.contains("密码") -> "password"
             label.contains("卡号") -> "card_number"
             label.contains("持卡人") -> "card_holder"
@@ -174,7 +197,7 @@ object VaultXml {
         }
     }
 
-    private fun parseCard(card: Element, labels: Map<String, String>): XmlCard? {
+    private fun parseCard(card: Element, labels: Map<String, XmlLabelRef>): XmlCard? {
         if (card.attr("template").isTrue() || card.attr("deleted").isTrue()) return null
 
         val title = card.attr("title").trim().ifBlank { "未命名" }
@@ -211,10 +234,10 @@ object VaultXml {
         val notesFromElement = card.childElement("notes")?.textContent.orEmpty().trim()
         if (notesFromElement.isNotBlank()) noteParts.add(0, notesFromElement)
 
-        val labelNames = card.childElements("label_id").mapNotNull { element ->
+        val labelRefs = card.childElements("label_id").mapNotNull { element ->
             val id = element.textContent.orEmpty().trim()
-            if (id.isBlank()) null else labels[id] ?: "标签 $id"
-        }.distinct()
+            if (id.isBlank()) null else labels[id] ?: XmlLabelRef("标签 $id")
+        }.distinctBy { it.name }
 
         val timestamp = card.attr("time_stamp").toLongOrNull()?.let { raw ->
             if (raw in 1..9_999_999_999L) raw * 1000 else raw
@@ -254,7 +277,15 @@ object VaultXml {
             },
             iconData = image
         )
-        return XmlCard(item, labelNames)
+        return XmlCard(item, labelRefs)
+    }
+
+    /** 读回 `#RRGGBB`：解析失败返回 null，交给调用方用默认色。 */
+    private fun parseLabelColor(raw: String): Int? {
+        val hex = raw.trim().removePrefix("#")
+        if (hex.length != 6) return null
+        val rgb = hex.toIntOrNull(16) ?: return null
+        return (0xFF000000L or rgb.toLong()).toInt()
     }
 
     private fun safeType(type: String, rawName: String): FieldType = when (type) {

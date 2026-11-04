@@ -108,6 +108,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     biometricSaved = meta != null && container.biometric.has(meta.id)
                 )
             }
+            // 启动时静默查一次更新：只在真有新版本时提示，网络问题不打扰。
+            if (reconciled.checkUpdatesOnLaunch) {
+                checkForUpdates(showDialog = false, quiet = true)
+            }
         }
     }
 
@@ -813,6 +817,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setThemeColor(value: Long) = updateSettings { it.copy(themeColor = value) }
     fun setOnlyFavorites(value: Boolean) = _state.update { it.copy(onlyFavorites = value) }
     fun setSearchPasswords(value: Boolean) = updateSettings { it.copy(searchPasswords = value) }
+
+    fun setCheckUpdatesOnLaunch(value: Boolean) = updateSettings { it.copy(checkUpdatesOnLaunch = value) }
     fun setDefaultLabel(id: String?) {
         updateSettings { it.copy(defaultLabelId = id) }
         val exists = id != null && _state.value.activeVault?.labels?.any { it.id == id } == true
@@ -1375,10 +1381,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                                 failures += "$label：JSON 格式不正确，应为本应用导出的 JSON"
                                 return@forEach
                             }
+                            // 先把标签并进来，并记下「文件里的标签 id → 本地标签 id」。
+                            // 不重映射的话，条目的 labelIds 仍指向文件里的旧 id，导入后等于没有标签。
+                            val labelIdMap = mutableMapOf<String, String>()
+                            importedVault.labels.forEach { importedLabel ->
+                                val existing = session.vault.labels.firstOrNull { it.name == importedLabel.name }
+                                if (existing != null) {
+                                    labelIdMap[importedLabel.id] = existing.id
+                                } else {
+                                    val created = importedLabel.copy(id = newId())
+                                    session.vault.labels.add(created)
+                                    labelIdMap[importedLabel.id] = created.id
+                                    importedLabels++
+                                }
+                            }
                             val items = importedVault.items.map { item ->
                                 item.copy(
                                     id = newId(),
                                     fields = item.fields.map { it.copy(id = newId()) }.toMutableList(),
+                                    labelIds = item.labelIds.mapNotNull { labelId -> labelIdMap[labelId] }.toMutableList()
                                 )
                             }
                             if (items.isEmpty()) {
@@ -1396,13 +1417,32 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         }
 
                         else -> {
-                            val items = runCatching { VaultCodec.itemsFromCsv(text) }.getOrDefault(emptyList())
-                            if (items.isEmpty()) {
+                            val rows = runCatching { VaultCodec.rowsFromCsv(text) }.getOrDefault(emptyList())
+                            if (rows.isEmpty()) {
                                 failures += "$label：无法识别，支持本应用导出的 JSON / CSV，或兼容格式的 XML"
                                 return@forEach
                             }
-                            session.vault.items.addAll(items)
-                            importedCount += items.size
+                            // CSV 的「标签详情」列带着颜色与排序：沿用文件里的值，别退回默认色。
+                            var nextLabelOrder = (session.vault.labels.maxOfOrNull { it.sortOrder } ?: -1) + 1
+                            rows.forEach { row ->
+                                val ids = row.labels.mapNotNull { ref ->
+                                    val existing = session.vault.labels.firstOrNull { it.name == ref.name }
+                                    val target = existing ?: Label(
+                                        name = ref.name,
+                                        sortOrder = ref.sortOrder ?: nextLabelOrder++
+                                    ).let { created ->
+                                        val color = ref.color
+                                        if (color != null) created.copy(color = color) else created
+                                    }.also {
+                                        session.vault.labels.add(it)
+                                        importedLabels++
+                                    }
+                                    target.id
+                                }
+                                row.item.labelIds = ids.toMutableList()
+                                session.vault.items.add(row.item)
+                            }
+                            importedCount += rows.size
                         }
                     }
                 }
@@ -1653,7 +1693,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // ---------------------------------------------------------------- 检查更新
 
     /** 查询 GitHub 上最新的正式发布；[showDialog] 为 true 且发现新版本时弹出更新对话框。 */
-    fun checkForUpdates(showDialog: Boolean = true) {
+    fun checkForUpdates(showDialog: Boolean = true, quiet: Boolean = false) {
         if (_state.value.updateChecking) return
         // 正在下载或等待安装时再查会重复弹“新版本”，而且此时点“更新”也没有响应。
         // 与其重查一遍，不如直接告诉用户当前处于什么阶段。
@@ -1700,13 +1740,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     // 的副标题提示。否则后台检查会在用户没操作时弹框，多数时候正好落在解锁界面上。
                     if (showDialog) return@launch
                     showMessage("发现新版本 v${info.version}")
-                } else {
+                } else if (!quiet) {
                     showMessage("当前已是最新版本 v$current")
                 }
             } catch (e: Exception) {
                 // 网络失败、超时、GitHub 限流或返回异常内容都归到这一类，只给用户可读提示。
                 android.util.Log.w("AppViewModel", "检查更新失败", e)
-                showMessage("检查更新失败，请检查网络后重试")
+                if (!quiet) showMessage("检查更新失败，请检查网络后重试")
             } finally {
                 _state.update { it.copy(updateChecking = false) }
             }

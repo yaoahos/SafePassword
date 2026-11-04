@@ -36,7 +36,9 @@ data class AppSettings(
      * 只做 HEAD 比对 Last-Modified，云上没有变化时不会产生整库下载。
      */
     /** 自动拉取云端更新的间隔（秒，0 = 关闭）。 */
-    val pullIntervalSeconds: Int = 60
+    val pullIntervalSeconds: Int = 60,
+    /** 每次启动时是否自动检查更新（静默检查，有新版本才提示）。 */
+    val checkUpdatesOnLaunch: Boolean = true
 )
 
 class SettingsStore(context: Context) {

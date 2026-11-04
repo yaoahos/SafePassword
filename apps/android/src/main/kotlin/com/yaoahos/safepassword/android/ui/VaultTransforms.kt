@@ -66,17 +66,22 @@ internal fun compactIconData(raw: String): String {
 internal fun mergeXmlCards(vault: Vault, cards: List<XmlCard>): Pair<Int, Int> {
     val labelsByName = vault.labels.associateBy { it.name }.toMutableMap()
     var newLabels = 0
+    // 新标签沿用文件里的排序；文件没带排序时追加到末尾。
+    var nextOrder = (vault.labels.maxOfOrNull { it.sortOrder } ?: -1) + 1
     cards.forEach { card ->
-        val labelIds = card.labelNames.mapNotNull { name ->
-            val existing = labelsByName[name]
+        val labelIds = card.labelRefs.mapNotNull { ref ->
+            val existing = labelsByName[ref.name]
             val label = if (existing != null) {
                 existing
             } else {
-                Label(name = name).also {
-                    vault.labels.add(it)
-                    labelsByName[name] = it
-                    newLabels++
-                }
+                val created = Label(
+                    name = ref.name,
+                    sortOrder = ref.sortOrder ?: nextOrder++
+                ).let { created -> val color = ref.color; if (color != null) created.copy(color = color) else created }
+                vault.labels.add(created)
+                labelsByName[ref.name] = created
+                newLabels++
+                created
             }
             label.id
         }
