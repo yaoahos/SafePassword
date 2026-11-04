@@ -240,7 +240,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 maybeAutoBackup(opened, updatedMeta)
                 // 解锁后立刻检查一次云端与本机谁更新，并启动定时拉取。
                 restartPullLoop()
-                checkRemoteIfDue(force = true)
+                // 上次的同名库冲突还没解决：再同步一次，让弹窗重新出现，
+                // 而不是「关掉一次就再也不提」。
+                if (_state.value.nameConflictPending) {
+                    doSync(silent = true)
+                } else {
+                    checkRemoteIfDue(force = true)
+                }
             } catch (e: Exception) {
                 if (e is WrongPasswordException) {
                     failedAttempts++
@@ -362,7 +368,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 // 云端清单里的显示名也立刻改掉，配合随后的一次同步，
                 // 另一台设备刷新清单时看到的就已是新名字。
                 val cloudRenamed = runCatching {
-                    renameCloudEntry(meta.cloudKey, meta.name, trimmed)
+                    renameCloudEntry(meta.cloudKey, trimmed)
                 }.isSuccess
                 _state.update {
                     it.copy(
@@ -389,7 +395,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 container.biometric.clear(meta.id)
                 // 云端那份一起删，否则另一台设备下次同步会把本地副本重新传上去，
                 // 本地与云端就成了两个互不相干的分支。
-                val cloudRemoved = runCatching { deleteCloudCopy(meta.cloudKey, meta.name) }.isSuccess
+                val cloudRemoved = runCatching { deleteCloudCopy(meta.cloudKey) }.isSuccess
                 val remaining = container.vaultStore.list()
                 val next = remaining.firstOrNull()
                 val saved = applyFingerprintState(next?.id)
@@ -1216,7 +1222,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         busy = false,
                         syncStatus = result.message,
                         syncStatusAt = now(),
-                        nameConflictMessage = result.message
+                        nameConflictMessage = result.message,
+                        nameConflictPending = true
                     )
                 }
                 return
@@ -1246,6 +1253,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     busy = false,
                     syncStatus = result.message,
                     syncStatusAt = now(),
+                    nameConflictPending = false,
                     message = if (silent) it.message else result.message,
                     security = SecurityAnalyzer.analyze(result.container.vault, it.breached),
                     dataVersion = it.dataVersion + 1
@@ -1901,7 +1909,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      * 只在本地删库时调用：本地和云端必须一起消失，否则另一台设备会把
      * 本地副本当成「云端还没有」重新上传，两边就分叉了。
      */
-    private suspend fun deleteCloudCopy(cloudKey: String, name: String) {
+    private suspend fun deleteCloudCopy(cloudKey: String) {
         val config = _state.value.webDav
         if (!config.isConfigured()) return
         val client = WebDavClient(config, OkHttp.create())
@@ -1910,12 +1918,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val manifest = CloudManifest.parse(
                 client.get(config.manifestPath())?.toString(Charsets.UTF_8)
             )
-            // 老库可能还没有键：按名字去清单里找它实际用的键，找不到就什么也不用删。
-            val key = cloudKey.ifBlank { manifestEntryKey(manifest, name) }
-            if (key != null) {
+            // 只认内容密钥派生的键：按名字去猜会误删别的同名库。
+            // 键为空说明这个库从没同步过，云端本来就没有它的副本。
+            val key = cloudKey
+            if (key.isNotBlank()) {
                 client.delete(config.remotePath(key))
-            } else if (cloudKey.isBlank()) {
-                client.delete(config.legacyRemotePath())
             }
             // 与桌面端一致：删文件 + 从清单摘掉条目（不做墓碑）。
             // 另一台设备据此得到「清单里没有、云端也没有」→ 判为已删除并弹窗询问。
@@ -1933,7 +1940,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** 改名后同步云端清单里的显示名（云端文件名用的是 cloudKey，不会变）。 */
-    private suspend fun renameCloudEntry(cloudKey: String, oldName: String, newName: String) {
+    private suspend fun renameCloudEntry(cloudKey: String, newName: String) {
         val config = _state.value.webDav
         if (!config.isConfigured()) return
         val client = WebDavClient(config, OkHttp.create())
@@ -1942,7 +1949,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val manifest = CloudManifest.parse(
                 client.get(config.manifestPath())?.toString(Charsets.UTF_8)
             )
-            val key = cloudKey.ifBlank { manifestEntryKey(manifest, oldName) } ?: return
+            // 只改本次密码库自己的清单条目；键为空说明它还没上过云，什么都不用改。
+            // 之前这里会按库名回退匹配，结果把别的同名库改掉了。
+            if (cloudKey.isBlank()) return
+            val key = cloudKey
             val entry = manifest.vaults.firstOrNull { it.key == key } ?: return
             if (entry.name == newName) return
             manifest.upsert(key, newName, entry.updatedAt, entry.size)
@@ -1953,12 +1963,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         } finally {
             client.close()
         }
-    }
-
-    /** 清单里显示名匹配的那条记录的键；没有就返回 null。 */
-    private fun manifestEntryKey(manifest: CloudManifest, name: String): String? {
-        val want = name.trim().lowercase()
-        return manifest.vaults.firstOrNull { it.name.trim().lowercase() == want }?.key
     }
 
     /** 用户选择「删除本地」：跟着云端一起删掉，回到解锁或欢迎页。 */
@@ -2124,6 +2128,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val timeout = _state.value.settings.autoLockSeconds
         if (timeout >= 0 && now() - at >= timeout * 1000L) {
             lock()
+        } else if (_state.value.nameConflictPending) {
+            // 同名库冲突未解决：每次回到前台都再试一次，让提示重新出现。
+            viewModelScope.launch(Dispatchers.IO) { doSync(silent = true) }
         } else {
             // 回到前台时顺带检查一次云端，是否真的拉取由 lastPullCheckAt 控制。
             checkRemoteIfDue()

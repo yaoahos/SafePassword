@@ -57,22 +57,14 @@ class SyncEngine(
             if (local.vault.cloudKey != fromContent) local.vault.cloudKey = fromContent
             return fromContent
         }
-        // contentKey 缺失（极老的库）才退回存储键 / 清单认领 / 新键。
+        // contentKey 缺失（极老的库）才退回存储键或新键。
+        // 不再「按库名去清单里认领」：云端可能有别的同名库，认错了就会把对端的文件
+        // 当成自己的，随后解密出一份内容密钥不同的库并报「不是同一来源」。
         val existing = local.vault.cloudKey
         if (existing.isNotBlank()) return existing
-        val claimed = runCatching { manifestEntryFor(local.vault.name)?.key }.getOrNull()
-        val key = claimed?.takeIf { it.isNotBlank() } ?: CloudManifest.newKey()
+        val key = CloudManifest.newKey()
         local.vault.cloudKey = key
         return key
-    }
-
-    /** 云端清单里显示名与给定名字相同的那一条（大小写、首尾空格不敏感）。 */
-    private suspend fun manifestEntryFor(name: String): CloudVaultEntry? {
-        val manifest = CloudManifest.parse(
-            webDav.get(config.manifestPath())?.toString(Charsets.UTF_8)
-        )
-        val want = name.trim().lowercase()
-        return manifest.vaults.firstOrNull { it.name.trim().lowercase() == want }
     }
 
     /**
@@ -138,12 +130,10 @@ class SyncEngine(
         if (remoteBytes == null) {
             // 认领已有的云端文件：只有内容密钥一致（同一密码库）才认领，
             // 否则视为云端还没有本库文件，直接上传本地，避免读到别的密码库的数据。
-            // 依次尝试：根目录单文件 → 按库名派生的键。
-            // 旧布局：单文件 SafePassword.spv，以及按库名哈希命名的老文件（清单里还记着键）。
-            val claimedKey = runCatching { manifestEntryFor(local.vault.name)?.key }.getOrNull()
+            // 只尝试旧布局：根目录单文件，以及旧版 64 位内容密钥命名的文件。
+            // 不按库名去清单里找——云端可能有别的同名库，认错就会报「不是同一来源」。
             val candidates = listOfNotNull(
                 config.legacyRemotePath(),
-                claimedKey?.takeIf { it.isNotBlank() }?.let { config.remotePath(it) },
                 CloudManifest.legacyKeyForContent(local.vault.contentKey)?.let { config.remotePath(it) }
             ).distinct().filter { it != remotePath }
             for (candidate in candidates) {
@@ -160,32 +150,18 @@ class SyncEngine(
         }
 
         // 云端既没有本库文件、也没有可认领的旧文件时判为「被删了」。
-        // 与桌面端同一套规则：不看墓碑，只看「曾同步过 + 文件确实没了」，
-        // 先按库名去清单里认领改名后的新键，仍找不到才交给界面询问怎么处理。
+        // 与桌面端同一套规则：不看墓碑，只看「曾同步过 + 文件确实没了」。
         if (remoteBytes == null && local.vault.lastSyncedAt > 0) {
-            val manifest = CloudManifest.parse(
-                webDav.get(config.manifestPath())?.toString(Charsets.UTF_8)
+            val pending = local.vault.updatedAt > local.vault.lastSyncedAt + CLOCK_SKEW_MS
+            return SyncResult(
+                container = local,
+                direction = SyncDirection.REMOTE_DELETED,
+                message = if (pending) {
+                    "云端已删除该密码库（本地有未同步的修改）"
+                } else {
+                    "云端已删除该密码库"
+                }
             )
-            val want = local.vault.name.trim().lowercase()
-            val entry = manifest.vaults.firstOrNull { it.name.trim().lowercase() == want }
-            if (entry != null && entry.key != remoteKey) {
-                remoteKey = entry.key
-                remotePath = config.remotePath(remoteKey)
-                remoteBytes = webDav.get(remotePath)
-            }
-            if (remoteBytes == null) {
-                // 本地还有没同步出去的改动时，提示里要说清楚，因为删本地会丢数据。
-                val pending = local.vault.updatedAt > local.vault.lastSyncedAt + 3_000
-                return SyncResult(
-                    container = local,
-                    direction = SyncDirection.REMOTE_DELETED,
-                    message = if (pending) {
-                        "云端已删除该密码库（本地有未同步的修改）"
-                    } else {
-                        "云端已删除该密码库"
-                    }
-                )
-            }
         }
         if (remoteBytes == null) {
             local.ensureContentKey()

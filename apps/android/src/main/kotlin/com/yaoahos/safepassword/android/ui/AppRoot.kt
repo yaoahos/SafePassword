@@ -58,6 +58,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.text.font.FontWeight
 
 @Composable
 fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
@@ -299,39 +307,80 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                 }
 
                 if (state.nameConflictMessage != null) {
-                    var newName by remember(state.nameConflictMessage) {
-                        mutableStateOf(state.activeMeta?.name ?: "")
-                    }
+                    val currentName = state.activeMeta?.name ?: ""
+                    var newName by remember(state.nameConflictMessage) { mutableStateOf("") }
                     AlertDialog(
                         onDismissRequest = { viewModel.dismissNameConflict() },
-                        title = { Text("云端已有同名密码库") },
+                        title = null,
                         text = {
                             Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        Modifier
+                                            .size(38.dp)
+                                            .background(
+                                                MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+                                                RoundedCornerShape(12.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.CloudOff,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(21.dp)
+                                        )
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        "云端已有同名密码库",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                Spacer(Modifier.height(14.dp))
                                 Text(
-                                    "云端已经有一个同名密码库。云端文件按库内容标识，" +
-                                        "同名会是两个互不相干的库，恢复列表里也会出现两条看得一样的条目。" +
-                                        "\n\n请给本机这个库换一个名字再同步。",
-                                    style = MaterialTheme.typography.bodySmall,
+                                    "云端已经有一个叫「$currentName」的密码库，和本机这个不是同一份数据。" +
+                                        "两者会并存，同步和恢复时很难区分。",
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Spacer(Modifier.height(10.dp))
+                                Spacer(Modifier.height(16.dp))
                                 OutlinedTextField(
                                     value = newName,
                                     onValueChange = { newName = it },
-                                    label = { Text("新的密码库名称") },
+                                    label = { Text("给本机这个库换一个名字") },
+                                    placeholder = { Text("例如：$currentName（手机）") },
                                     singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                                    ),
                                     modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "改名后会立即重新同步，云端另存一份。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         },
                         confirmButton = {
-                            TextButton(onClick = { viewModel.renameAfterNameConflict(newName) }) {
-                                Text("改名并同步")
-                            }
+                            TextButton(
+                                onClick = { viewModel.renameAfterNameConflict(newName) },
+                                enabled = newName.isNotBlank()
+                            ) { Text("改名并同步", fontWeight = FontWeight.SemiBold) }
                         },
                         dismissButton = {
                             TextButton(onClick = { viewModel.dismissNameConflict() }) { Text("稍后") }
-                        }
+                        },
+                        shape = RoundedCornerShape(20.dp),
+                        containerColor = MaterialTheme.colorScheme.surface
                     )
                 }
 
