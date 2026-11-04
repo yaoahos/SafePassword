@@ -57,6 +57,13 @@ data class AppUiState(
      * 非空表示要弹窗让用户给本机这个库改名后再同步。
      */
     val nameConflictMessage: String? = null,
+    /**
+     * 是否还存在没解决的「云端同名库」冲突。
+     *
+     * 与 [nameConflictMessage] 分开：只关掉弹窗不会清掉这个标记，
+     * 所以下次同步（解锁、回前台、手动同步）再撞上时还会重新弹出。
+     */
+    val nameConflictPending: Boolean = false,
     val dataVersion: Long = 0,
     // ---- 检查更新 / 自更新 ----
     val updateChecking: Boolean = false,
