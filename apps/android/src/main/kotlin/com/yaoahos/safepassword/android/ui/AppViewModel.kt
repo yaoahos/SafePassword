@@ -288,6 +288,54 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** 云端同名冲突：关闭弹窗，先不改名（下次同步还会提示）。 */
+    fun dismissNameConflict() {
+        _state.update { it.copy(nameConflictMessage = null) }
+    }
+
+    /**
+     * 云端已有同名密码库时，给本机这个库改名再重新同步。
+     *
+     * 云端文件名由内容密钥派生，同名会是两个互不相干的库，
+     * 用户只看到「测试库」出现两行、key 又看不见，所以必须先改名。
+     */
+    fun renameAfterNameConflict(newName: String) {
+        val session = active ?: return
+        val meta = _state.value.activeMeta ?: return
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) {
+            fail("请输入新的密码库名称")
+            return
+        }
+        if (trimmed.length > 40) {
+            fail("密码库名称不能超过 40 个字符")
+            return
+        }
+        if (_state.value.vaults.any { it.id != meta.id && it.name.equals(trimmed, ignoreCase = true) }) {
+            fail("本地已有名为「$trimmed」的密码库，请换一个名称")
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                session.vault.name = trimmed
+                session.vault.touch()
+                persist()
+                val updated = meta.copy(name = trimmed)
+                container.vaultStore.updateMeta(updated)
+                _state.update {
+                    it.copy(
+                        activeMeta = updated,
+                        vaults = container.vaultStore.list(),
+                        nameConflictMessage = null
+                    )
+                }
+                doSync(silent = false)
+            } catch (e: Exception) {
+                fail(e)
+            }
+        }
+    }
+
     fun renameVault(newName: String) {
         val session = active ?: return
         val meta = _state.value.activeMeta ?: return
@@ -1131,8 +1179,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun doSync(
         silent: Boolean,
-        // 本地修改优先：本地与云端都变化时，以本机版本覆盖云端。
-        strategy: ConflictStrategy = ConflictStrategy.KEEP_LOCAL
+        // 默认合并：两端的墙上时钟不可比，按「谁的时间戳更新」挑赢家会丢数据。
+        // 只有用户明确选择「保留本地并覆盖云端」时才传 KEEP_LOCAL。
+        strategy: ConflictStrategy = ConflictStrategy.MERGE
     ) {
         val session = active ?: return
         val meta = _state.value.activeMeta ?: return
@@ -1156,6 +1205,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         syncConflict = true,
                         syncStatus = result.message,
                         syncStatusAt = now()
+                    )
+                }
+                return
+            }
+            if (result.direction == SyncDirection.NAME_CONFLICT) {
+                // 云端已有同名但不同 key 的库：不上传，弹窗让用户先把本机这个库改名。
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        syncStatus = result.message,
+                        syncStatusAt = now(),
+                        nameConflictMessage = result.message
                     )
                 }
                 return
@@ -1621,8 +1682,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 // 而不是按新库名另建一份。
                 if (key.isNotBlank() && opened.vault.cloudKey.isBlank()) {
                     opened.vault.cloudKey = key
-                    container.vaultStore.save(opened, meta)
                 }
+                // 刚恢复下来的内容和云端是同一份，把「上次同步时间」对齐，
+                // 否则首次同步会把它当成「本地有未上传的修改」而白传一遍整库。
+                opened.vault.lastSyncedAt = opened.vault.updatedAt
+                container.vaultStore.save(opened, meta)
                 container.settings.lastVaultId = meta.id
                 attach(opened, meta, password)
                 // 新库一开始没有指纹凭据，开关先归零；下面会提示用户是否开启。

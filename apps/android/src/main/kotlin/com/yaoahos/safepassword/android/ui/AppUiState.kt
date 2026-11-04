@@ -52,6 +52,11 @@ data class AppUiState(
      * 非空表示要弹窗让用户选「删除本地」还是「恢复到云端」。
      */
     val remoteDeletedName: String? = null,
+    /**
+     * 同步时发现云端已有同名但不同 key 的密码库。
+     * 非空表示要弹窗让用户给本机这个库改名后再同步。
+     */
+    val nameConflictMessage: String? = null,
     val dataVersion: Long = 0,
     // ---- 检查更新 / 自更新 ----
     val updateChecking: Boolean = false,
