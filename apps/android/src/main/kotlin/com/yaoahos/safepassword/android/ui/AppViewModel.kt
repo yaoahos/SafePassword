@@ -108,9 +108,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     biometricSaved = meta != null && container.biometric.has(meta.id)
                 )
             }
-            // 启动时静默查一次更新：只在真有新版本时提示，网络问题不打扰。
+            // 启动时查一次更新：有新版本就像手动检查一样弹更新框，
+            // 只在底部飘一行提示容易被忽略；网络问题仍然不打扰（quiet）。
             if (reconciled.checkUpdatesOnLaunch) {
-                checkForUpdates(showDialog = false, quiet = true)
+                checkForUpdates(showDialog = true, quiet = true)
             }
         }
     }
@@ -1808,8 +1809,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 if (newer) {
-                    // 用户主动点检查才弹更新框；后台检查只留 updateInfo，由「检查更新」那一行
-                    // 的副标题提示。否则后台检查会在用户没操作时弹框，多数时候正好落在解锁界面上。
+                    // 有新版本一律弹更新框（启动检查与手动检查同一条路径）；
+                    // 不弹时才退化成底部提示，避免同一个版本既弹框又飘一行字。
                     if (showDialog) return@launch
                     showMessage("发现新版本 v${info.version}")
                 } else if (!quiet) {
