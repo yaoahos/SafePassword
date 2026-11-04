@@ -3,6 +3,7 @@ package com.yaoahos.safepassword.core.sync
 import com.yaoahos.safepassword.core.crypto.VaultContainer
 import com.yaoahos.safepassword.core.model.Vault
 import com.yaoahos.safepassword.core.model.now
+import kotlinx.coroutines.CancellationException
 
 enum class SyncDirection {
     NONE,
@@ -11,7 +12,10 @@ enum class SyncDirection {
     MERGED,
     CONFLICT,
     /** 云端已删除这个密码库（另一端删的），本地副本应当跟着删除。 */
-    REMOTE_DELETED
+    REMOTE_DELETED,
+
+    /** 云端已有同名但不同内容的密码库：本次不上传，应当提示用户改名后再同步。 */
+    NAME_CONFLICT
 }
 
 enum class ConflictStrategy {
@@ -114,7 +118,7 @@ class SyncEngine(
         local.ensureContentKey()
         local.vault.touch()
         local.vault.lastSyncedAt = local.vault.updatedAt
-        upload(config.remotePath(remoteKey), local, remoteKey)
+        upload(config.remotePath(remoteKey), local, remoteKey)?.let { return nameConflict(local, it) }
         return SyncResult(
             container = local,
             direction = SyncDirection.UPLOADED,
@@ -187,11 +191,11 @@ class SyncEngine(
             local.ensureContentKey()
             local.vault.lastSyncedAt = now()
             local.vault.touch()
-            upload(remotePath, local, remoteKey)
+            upload(remotePath, local, remoteKey)?.let { return nameConflict(local, it) }
             return SyncResult(
                 container = local,
                 direction = SyncDirection.UPLOADED,
-                message = "已上传到 WebDAV"
+                message = "已上传本地更新"
             )
         }
 
@@ -225,11 +229,12 @@ class SyncEngine(
         }
         if (conflictStrategy == ConflictStrategy.KEEP_LOCAL && localChanged) {
             local.vault.lastSyncedAt = now()
-            upload(remotePath, local, remoteKey)
+            upload(remotePath, local, remoteKey)?.let { return nameConflict(local, it) }
             return SyncResult(
                 container = local,
                 direction = SyncDirection.UPLOADED,
-                message = "已保留本地版本并覆盖云端"
+                // 传就是传，不因为用了哪种策略换措辞：同一件事换个说法只会让人以为出了两种问题。
+                message = "已上传本地更新"
             )
         }
         if (conflictStrategy == ConflictStrategy.KEEP_REMOTE && remoteChanged) {
@@ -269,6 +274,7 @@ class SyncEngine(
 
         val updated = mergedVault.copy(lastSyncedAt = now())
         upload(remotePath, local.withVault(updated), remoteKey)
+            ?.let { return nameConflict(local.withVault(updated), it) }
         return SyncResult(
             container = local.withVault(updated),
             direction = SyncDirection.MERGED,
@@ -298,23 +304,43 @@ class SyncEngine(
     /**
      * 上传密码库本体，并顺带维护云端清单。
      *
-     * 清单失败不应让整次同步失败——清单只服务「从云端恢复」时的选择列表，
-     * 真读不到时恢复流程还能列目录兜底。
+     * 写库之前先读清单：
+     * - 云端已有**同名但不同 key** 的密码库时返回那个名字，本次不上传，
+     *   交给界面提示改名——否则云端会出现两个同名库，用户根本分不清。
+     * - 读清单**失败**时只上传库文件、跳过清单重写。绝不能把「读失败」当成
+     *   空清单写回去，否则会把别的密码库条目全清掉（新建一个库 → 云端只剩它）。
+     *
+     * @return 冲突的另一个库名；没有冲突返回 null。
      */
-    private suspend fun upload(remotePath: String, container: VaultContainer, remoteKey: String) {
+    private suspend fun upload(remotePath: String, container: VaultContainer, remoteKey: String): String? {
+        val manifestText = try {
+            webDav.get(config.manifestPath())?.toString(Charsets.UTF_8)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 读不到清单：只传本体，清单等下次能读到再补。
+            webDav.put(remotePath, container.toBytes())
+            return null
+        }
+
+        val manifest = CloudManifest.parse(manifestText)
+        val want = container.vault.name.trim().lowercase()
+        manifest.vaults
+            .firstOrNull { it.key != remoteKey && it.name.trim().lowercase() == want }
+            ?.let { return it.name }
+
         val bytes = container.toBytes()
         webDav.put(remotePath, bytes)
-        runCatching {
-            val manifest = CloudManifest.parse(
-                webDav.get(config.manifestPath())?.toString(Charsets.UTF_8)
-            )
-            // 同一个库因改名/换键可能留下旧条目，按名字清掉，恢复列表里才不会出现两条。
-            val name = container.vault.name.trim().lowercase()
-            manifest.vaults.removeAll { it.key != remoteKey && it.name.trim().lowercase() == name }
-            manifest.upsert(remoteKey, container.vault.name, container.vault.updatedAt, bytes.size.toLong())
-            webDav.put(config.manifestPath(), manifest.toJson().toByteArray(Charsets.UTF_8))
-        }
+        manifest.upsert(remoteKey, container.vault.name, container.vault.updatedAt, bytes.size.toLong())
+        webDav.put(config.manifestPath(), manifest.toJson().toByteArray(Charsets.UTF_8))
+        return null
     }
+
+    private fun nameConflict(local: VaultContainer, other: String) = SyncResult(
+        container = local,
+        direction = SyncDirection.NAME_CONFLICT,
+        message = "云端已有同名密码库「$other」，请改名后再同步"
+    )
     private companion object {
         /** 允许的时钟偏差：小于这个差值就当作「同一时刻」。 */
         const val CLOCK_SKEW_MS = 3_000L

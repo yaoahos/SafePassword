@@ -51,6 +51,13 @@ import com.yaoahos.safepassword.core.sync.ConflictStrategy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 @Composable
 fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
@@ -287,6 +294,43 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                         },
                         dismissButton = {
                             TextButton(onClick = { viewModel.dismissFingerprintPrompt() }) { Text("以后再说") }
+                        }
+                    )
+                }
+
+                if (state.nameConflictMessage != null) {
+                    var newName by remember(state.nameConflictMessage) {
+                        mutableStateOf(state.activeMeta?.name ?: "")
+                    }
+                    AlertDialog(
+                        onDismissRequest = { viewModel.dismissNameConflict() },
+                        title = { Text("云端已有同名密码库") },
+                        text = {
+                            Column {
+                                Text(
+                                    "云端已经有一个同名密码库。云端文件按库内容标识，" +
+                                        "同名会是两个互不相干的库，恢复列表里也会出现两条看得一样的条目。" +
+                                        "\n\n请给本机这个库换一个名字再同步。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                OutlinedTextField(
+                                    value = newName,
+                                    onValueChange = { newName = it },
+                                    label = { Text("新的密码库名称") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { viewModel.renameAfterNameConflict(newName) }) {
+                                Text("改名并同步")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { viewModel.dismissNameConflict() }) { Text("稍后") }
                         }
                     )
                 }
