@@ -73,6 +73,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var lastPullCheckAt: Long = 0
     private var failedAttempts = 0
     private var lockedUntil = 0L
+    /**
+     * 启动时的「检查更新」只在第一次解锁到首页后跑一次。
+     *
+     * 放在解锁之前会在解锁界面上弹更新框，用户还没看到自己的数据就被打断，
+     * 也容易被误解成解锁流程的一部分。
+     */
+    private var launchUpdatePending = false
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -108,11 +115,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     biometricSaved = meta != null && container.biometric.has(meta.id)
                 )
             }
-            // 启动时查一次更新：有新版本就像手动检查一样弹更新框，
-            // 只在底部飘一行提示容易被忽略；网络问题仍然不打扰（quiet）。
-            if (reconciled.checkUpdatesOnLaunch) {
-                checkForUpdates(showDialog = true, quiet = true)
-            }
+            // 启动时查一次更新：等用户解锁到首页再查，避免更新框盖在解锁界面上。
+            launchUpdatePending = reconciled.checkUpdatesOnLaunch
         }
     }
 
@@ -241,6 +245,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 maybeAutoBackup(opened, updatedMeta)
                 // 解锁后立刻检查一次云端与本机谁更新，并启动定时拉取。
                 restartPullLoop()
+                // 启动时的检查更新挪到这里：解锁成功、界面已经切到首页之后再弹框。
+                runLaunchUpdateCheck()
                 // 上次的同名库冲突还没解决：再同步一次，让弹窗重新出现，
                 // 而不是「关掉一次就再也不提」。
                 if (_state.value.nameConflictPending) {
@@ -977,6 +983,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** 只有拿到认证通过的 Cipher 才能走到这里，主密码由 Keystore 密钥解出。 */
+    /** 启动后的第一次解锁：补跑一次更新检查，然后清掉标记，本次进程内不再重复。 */
+    private fun runLaunchUpdateCheck() {
+        if (!launchUpdatePending) return
+        launchUpdatePending = false
+        if (!container.settings.settings.checkUpdatesOnLaunch) return
+        // 稍等一下，让首页先完成布局，避免弹框和页面切换动画抢同一帧。
+        viewModelScope.launch(Dispatchers.IO) {
+            delay(600)
+            // 这 600ms 里用户可能又锁上了，别把更新框弹回解锁界面。
+            if (!_state.value.unlocked) return@launch
+            checkForUpdates(showDialog = true, quiet = true)
+        }
+    }
+
     fun unlockWithBiometricCipher(cipher: Cipher?) {
         val meta = _state.value.activeMeta ?: run {
             fail("没有可解锁的密码库")
