@@ -9,10 +9,14 @@ import com.yaoahos.safepassword.android.BuildConfig
 import com.yaoahos.safepassword.android.data.AppSettings
 import com.yaoahos.safepassword.android.data.BackupEntry
 import com.yaoahos.safepassword.android.security.BiometricHelper
+import com.yaoahos.safepassword.android.update.BadPayloadException
 import com.yaoahos.safepassword.android.update.GitHubUpdater
+import com.yaoahos.safepassword.android.update.NoReleaseException
 import com.yaoahos.safepassword.android.update.RateLimitedException
+import com.yaoahos.safepassword.android.update.UpdateDownloadException
 import com.yaoahos.safepassword.android.update.UpdateLog
 import com.yaoahos.safepassword.android.update.UpdateNotifications
+import com.yaoahos.safepassword.android.update.UpdateUnavailableException
 import com.yaoahos.safepassword.core.crypto.VaultContainer
 import com.yaoahos.safepassword.core.crypto.WrongPasswordException
 import com.yaoahos.safepassword.core.io.VaultXml
@@ -1829,19 +1833,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(updateChecking = true) }
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val releases = GitHubUpdater.fetchReleases()
-                val notes = GitHubUpdater.releaseNotes(releases, limit = MAX_CHANGELOG_VERSIONS)
-                val published = releases.filter { !it.draft && !it.prerelease && it.tagName.isNotBlank() }
-                val latest = published.firstOrNull { release ->
-                    release.assets.any { asset -> asset.name.endsWith(".apk", ignoreCase = true) }
-                } ?: published.firstOrNull()
-                val current = BuildConfig.VERSION_NAME
-                if (latest == null) {
-                    _state.update { it.copy(changelog = notes) }
-                    showMessage("未找到可用的发布版本")
-                    return@launch
-                }
+                // 只取最新一版：检查更新不需要整页列表，省流量也省限流配额。
+                val latest = GitHubUpdater.fetchLatest()
+                val notes = GitHubUpdater.releaseNotes(listOf(latest), limit = MAX_CHANGELOG_VERSIONS)
                 val info = GitHubUpdater.toUpdateInfo(latest)
+                val current = BuildConfig.VERSION_NAME
                 val newer = GitHubUpdater.isNewer(info.version, current) && info.apkUrl.isNotBlank()
                 _state.update {
                     it.copy(
@@ -1858,6 +1854,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 } else if (!quiet) {
                     showMessage("当前已是最新版本 v$current")
                 }
+            } catch (e: NoReleaseException) {
+                if (!quiet) showMessage("还没有可更新的版本")
             } catch (e: Exception) {
                 // 网络失败、超时、GitHub 限流或返回异常内容都归到这一类，只给用户可读提示。
                 android.util.Log.w("AppViewModel", "检查更新失败", e)
@@ -1905,7 +1903,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         updateReadyFile = null
                     )
                 }
-                showMessage("下载失败，请检查网络后重试")
+                showMessage(
+                    if (e is UpdateDownloadException) e.message ?: "下载失败，请检查网络后重试"
+                    else "下载失败，请检查网络后重试"
+                )
             }
         }
     }
@@ -2281,11 +2282,38 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      * GitHub 未登录调用有配额（每小时 60 次/IP），共享出口 IP（公司网、VPN 池）
      * 很容易被别人用光，这时候提示「检查网络」会让人误以为是自己的网不好。
      */
-    private fun updateErrorMessage(e: Throwable): String {
-        if (e is RateLimitedException) {
-            return "请求过于频繁，请稍后再试"
+    private fun updateErrorMessage(e: Throwable): String = when (e) {
+        is RateLimitedException -> {
+            val reset = e.resetEpoch
+            if (reset != null && reset > 0) {
+                val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                    .format(java.util.Date(reset * 1000L))
+                "更新检查已被限制，请在 $time 后再试"
+            } else {
+                "更新检查已被限制，请稍后再试"
+            }
         }
-        return networkErrorText(e, "检查更新失败，请稍后重试")
+        is NoReleaseException -> "还没有可更新的版本"
+        is UpdateUnavailableException -> "更新服务暂时不可用，请稍后再试"
+        is BadPayloadException -> "更新服务返回内容异常，请稍后再试"
+        else -> when {
+            hasCauseNamed(e, "Timeout") -> "更新服务响应太慢，请检查网络或代理"
+            hasCauseNamed(e, "UnknownHost", "Connect") -> "连接不上更新服务，请检查网络或代理"
+            else -> "检查更新失败，请稍后重试"
+        }
+    }
+
+    /** 沿 cause 链看异常类名，判断是否命中某些关键词。 */
+    private fun hasCauseNamed(e: Throwable, vararg keywords: String): Boolean {
+        var current: Throwable? = e
+        var guard = 0
+        while (current != null && guard < 8) {
+            val name = current.javaClass.simpleName
+            if (keywords.any { name.contains(it, ignoreCase = true) }) return true
+            current = current.cause?.takeUnless { it === current }
+            guard++
+        }
+        return false
     }
 
     private fun fail(e: Throwable) {
