@@ -2283,7 +2283,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      */
     private fun updateErrorMessage(e: Throwable): String {
         if (e is RateLimitedException) {
-            return "GitHub 请求次数已达上限，请过一会儿再试"
+            return "请求过于频繁，请稍后再试"
         }
         return networkErrorText(e, "检查更新失败，请稍后重试")
     }
