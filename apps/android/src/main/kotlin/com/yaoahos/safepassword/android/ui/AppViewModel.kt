@@ -1103,7 +1103,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         vaults = container.vaultStore.list(),
                         busy = false,
                         syncStatus = result.message,
-                        message = result.message,
+                        message = if (showsSyncStatusInline()) it.message else result.message,
                         security = SecurityAnalyzer.analyze(result.container.vault, it.breached),
                         dataVersion = it.dataVersion + 1
                     )
@@ -1275,7 +1275,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     syncStatus = result.message,
                     syncStatusAt = now(),
                     nameConflictPending = false,
-                    message = if (silent) it.message else result.message,
+                    message = if (silent || showsSyncStatusInline()) it.message else result.message,
                     security = SecurityAnalyzer.analyze(result.container.vault, it.breached),
                     dataVersion = it.dataVersion + 1
                 )
@@ -2067,7 +2067,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         busy = false,
                         syncStatus = result.message,
                         syncStatusAt = now(),
-                        message = result.message,
+                        message = if (showsSyncStatusInline()) it.message else result.message,
                         security = SecurityAnalyzer.analyze(result.container.vault, it.breached),
                         dataVersion = it.dataVersion + 1
                     )
@@ -2240,6 +2240,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             rank = rank * 1000 + (parts.getOrNull(index) ?: 0).coerceIn(0, 999)
         }
         return rank
+    }
+
+    /**
+     * 当前页面是否已经自带同步状态行。
+     *
+     * 首页（密码库）和 WebDAV 页会在页面里短暂显示「正在同步…／已上传本地更新」，
+     * 这时候再飘一条底部提示就是同一件事说两遍；其它页面没有状态行，才用底部提示补。
+     */
+    private fun showsSyncStatusInline(): Boolean = when (_state.value.screen) {
+        Screen.Vault, is Screen.WebDav -> true
+        else -> false
     }
 
     private fun fail(e: Throwable) {
