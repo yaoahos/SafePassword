@@ -4,12 +4,12 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 - 项目名：`SafePassword`
 - 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.0.1`（versionCode 2）
+- 正式版本：`1.0.2`（versionCode 3）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`SafePassword-1.0.1-release.apk`
-- APK 大小：2,624,498 字节
-- SHA-256：`FC61B2AE8444097C2DAF65559139FDF6127F69D246EDF3DEC62DD380FFBBA221`
+- 正式 APK：`SafePassword-1.0.2-release.apk`
+- APK 大小：2,624,638 字节
+- SHA-256：`70D3274E461616CD667F06F1E9C09EDB158BC989A84150262F8234DF5127AF52`
 - 发布下载：[Releases](https://github.com/yaoahos/SafePassword/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
@@ -352,6 +352,12 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/11/05 · 1.0.2**
+- 优化 启动检查到新版本时弹出更新框，在解锁进入首页后提示
+- 修复 首页与 WebDAV 页的同步状态互相串页
+- 修复 页面内已有同步状态时仍重复弹出底部提示
+- 修复 检查更新偶发失败，并区分限流与网络错误
 
 **2026/11/04 · 1.0.1**
 - 修复 新建密码库同步后云端清单被覆盖，其他密码库从列表消失
