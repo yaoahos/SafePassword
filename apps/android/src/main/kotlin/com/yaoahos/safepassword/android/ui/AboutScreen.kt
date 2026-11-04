@@ -23,6 +23,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -151,6 +152,21 @@ fun AboutScreen(viewModel: AppViewModel, state: AppUiState) {
             }
 
             SectionCard(title = "更新") {
+                SettingRow(
+                    title = "启动时检查更新",
+                    subtitle = if (state.settings.checkUpdatesOnLaunch) {
+                        "每次启动后台检查一次，只在有新版本时提示"
+                    } else {
+                        "已关闭，可随时手动检查"
+                    },
+                    onClick = { viewModel.setCheckUpdatesOnLaunch(!state.settings.checkUpdatesOnLaunch) },
+                    trailing = {
+                        Switch(
+                            checked = state.settings.checkUpdatesOnLaunch,
+                            onCheckedChange = { viewModel.setCheckUpdatesOnLaunch(it) }
+                        )
+                    }
+                )
                 SettingRow(
                     title = "检查更新",
                     subtitle = when {
