@@ -181,6 +181,15 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
         listState.scrollToItem(0)
     }
 
+    // 收藏、移入回收站、恢复、彻底删除、改名等操作同样会改变条目顺序：
+    // 收藏的条目会因为「收藏置顶」跳到第一条，若还停在原来的滚动位置，
+    // 就会看到一条刚被收藏的条目凭空消失。凡是密码库内容变了就回到顶部。
+    LaunchedEffect(state.dataVersion) {
+        if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
+            listState.scrollToItem(0)
+        }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
