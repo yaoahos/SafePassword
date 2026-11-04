@@ -351,6 +351,17 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
 
             SectionCard(title = "其他") {
                 SettingRow(
+                    title = "启动时检查更新",
+                    subtitle = if (state.settings.checkUpdatesOnLaunch) "每次启动后台检查一次，有新版本才提示" else "已关闭，仍可在关于页手动检查",
+                    onClick = { viewModel.setCheckUpdatesOnLaunch(!state.settings.checkUpdatesOnLaunch) },
+                    trailing = {
+                        Switch(
+                            checked = state.settings.checkUpdatesOnLaunch,
+                            onCheckedChange = { viewModel.setCheckUpdatesOnLaunch(it) }
+                        )
+                    }
+                )
+                SettingRow(
                     title = "关于",
                     subtitle = "版本、技术栈与功能范围",
                     onClick = { viewModel.navigate(Screen.About) },

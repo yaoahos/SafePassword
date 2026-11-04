@@ -121,4 +121,98 @@ class ToolsTest {
         assertEquals(listOf("工作"), card.labelNames)
         assertEquals("iVBORw0KGgo=", card.item.iconData)
     }
+
+    @Test
+    fun `xml export keeps label color and order`() {
+        val vault = Vault(name = "标签测试")
+        val first = com.yaoahos.safepassword.core.model.Label(
+            name = "工作",
+            color = 0xFF2563EB.toInt(),
+            sortOrder = 0
+        )
+        val second = com.yaoahos.safepassword.core.model.Label(
+            name = "社交",
+            color = 0xFFDB2777.toInt(),
+            sortOrder = 3
+        )
+        vault.labels.add(first)
+        vault.labels.add(second)
+        val item = VaultItem(
+            title = "某站点",
+            fields = mutableListOf(Field(label = "用户名", value = "u", type = FieldType.TEXT))
+        )
+        item.labelIds.add(first.id)
+        item.labelIds.add(second.id)
+        vault.items.add(item)
+
+        val xml = VaultXml.export(vault)
+        assertTrue(xml, xml.contains("color=\"#2563EB\""))
+        assertTrue(xml, xml.contains("sort-order=\"3\""))
+        val refs = VaultXml.parse(xml).first().labelRefs.associateBy { it.name }
+        assertEquals(0xFF2563EB.toInt(), refs.getValue("工作").color)
+        assertEquals(3, refs.getValue("社交").sortOrder)
+    }
+
+    @Test
+    fun `xml export keeps secret field type`() {
+        val vault = Vault(name = "秘密字段")
+        val item = VaultItem(
+            title = "服务器",
+            fields = mutableListOf(
+                Field(label = "恢复码", value = "AAAA-BBBB", type = FieldType.SECRET, sensitive = true)
+            )
+        )
+        vault.items.add(item)
+
+        val card = VaultXml.parse(VaultXml.export(vault)).first()
+        val secret = card.item.fields.first { it.label == "恢复码" }
+        assertEquals(FieldType.SECRET, secret.type)
+        assertTrue(secret.sensitive)
+    }
+
+    @Test
+    fun `csv export keeps label color and order`() {
+        val vault = Vault(name = "CSV 标签")
+        val label = com.yaoahos.safepassword.core.model.Label(
+            name = "工作",
+            color = 0xFF2563EB.toInt(),
+            sortOrder = 4
+        )
+        vault.labels.add(label)
+        val item = VaultItem(title = "某站点", fields = mutableListOf(Field(label = "用户名", value = "u", type = FieldType.TEXT)))
+        item.labelIds.add(label.id)
+        vault.items.add(item)
+
+        val rows = VaultCodec.rowsFromCsv(VaultCodec.toCsv(vault))
+        val ref = rows.single().labels.single()
+        assertEquals("工作", ref.name)
+        assertEquals(0xFF2563EB.toInt(), ref.color)
+        assertEquals(4, ref.sortOrder)
+    }
+    @Test
+    fun `json export round trips label color and field types`() {
+        val vault = Vault(name = "JSON 测试")
+        val label = com.yaoahos.safepassword.core.model.Label(
+            name = "银行",
+            color = 0xFFDC2626.toInt(),
+            sortOrder = 2
+        )
+        vault.labels.add(label)
+        val item = VaultItem(
+            title = "招商银行",
+            fields = mutableListOf(
+                Field(label = "密码", value = "p@ss", type = FieldType.PASSWORD, sensitive = true),
+                Field(label = "恢复码", value = "XYZ", type = FieldType.SECRET, sensitive = true)
+            )
+        )
+        item.labelIds.add(label.id)
+        vault.items.add(item)
+
+        val back = VaultCodec.fromJson(VaultCodec.toJson(vault))
+        assertEquals(0xFFDC2626.toInt(), back.labels.single().color)
+        assertEquals(2, back.labels.single().sortOrder)
+        val types = back.items.single().fields.map { it.type }
+        assertEquals(listOf(FieldType.PASSWORD, FieldType.SECRET), types)
+        assertEquals(listOf(back.labels.single().id), back.items.single().labelIds)
+    }
 }

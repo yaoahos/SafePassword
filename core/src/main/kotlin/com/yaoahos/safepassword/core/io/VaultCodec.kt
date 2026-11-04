@@ -17,20 +17,30 @@ object VaultCodec {
 
     fun toCsv(vault: Vault): String {
         val builder = StringBuilder()
-        builder.append("标题,用户名,密码,网址,备注,标签\r\n")
+        builder.append("标题,用户名,密码,网址,备注,标签,标签详情\r\n")
         vault.items.filter { it.status != com.yaoahos.safepassword.core.model.ItemStatus.TRASHED }.forEach { item ->
             val username = item.fields.firstOrNull { it.label in listOf("用户名", "邮箱", "账号") }?.value.orEmpty()
             val password = item.primaryPassword.orEmpty()
-            val labels = item.labelIds.mapNotNull { id -> vault.label(id)?.name }.joinToString("|")
+            val labelObjects = item.labelIds.mapNotNull { id -> vault.label(id) }
+            val labels = labelObjects.joinToString("|") { it.name }
+            // 标签详情列是给本应用回读用的：名称#RRGGBB:排序。别的工具会当成普通文本列忽略。
+            val labelDetails = labelObjects.joinToString("|") { label ->
+                label.name + "#" + "%06X".format(label.color and 0xFFFFFF) + ":" + label.sortOrder
+            }
             builder.append(
-                listOf(item.title, username, password, item.url, item.notes, labels)
+                listOf(item.title, username, password, item.url, item.notes, labels, labelDetails)
                     .joinToString(",") { escapeCsv(it) }
             ).append("\r\n")
         }
         return builder.toString()
     }
 
-    fun itemsFromCsv(text: String): List<VaultItem> {
+    /** CSV 里的一行：条目 + 该行带的标签（含颜色与排序）。 */
+    data class CsvRow(val item: VaultItem, val labels: List<XmlLabelRef>)
+
+    fun itemsFromCsv(text: String): List<VaultItem> = rowsFromCsv(text).map { it.item }
+
+    fun rowsFromCsv(text: String): List<CsvRow> {
         val rows = parseCsv(text)
         if (rows.isEmpty()) return emptyList()
         val header = rows.first().map { normalizeHeader(it) }
@@ -39,6 +49,7 @@ object VaultCodec {
         val passwordIndex = header.indexOfFirst { it == "password" }
         val urlIndex = header.indexOfFirst { it == "url" }
         val notesIndex = header.indexOfFirst { it == "notes" }
+        val labelDetailIndex = header.indexOfFirst { it == "labeldetail" }
         if (titleIndex < 0 && usernameIndex < 0 && passwordIndex < 0) {
             return emptyList()
         }
@@ -62,8 +73,30 @@ object VaultCodec {
                 createdAt = now(),
                 updatedAt = now()
             )
-            item
+            val labels = if (labelDetailIndex >= 0) {
+                cell(labelDetailIndex).split('|').mapNotNull { parseLabelDetail(it) }
+            } else {
+                emptyList()
+            }
+            CsvRow(item, labels)
         }
+    }
+
+    /** 解析「名称#RRGGBB:排序」；名称里允许出现 # 与 :，从右侧定位。 */
+    private fun parseLabelDetail(raw: String): XmlLabelRef? {
+        val text = raw.trim()
+        if (text.isEmpty()) return null
+        val hash = text.lastIndexOf('#')
+        if (hash < 0) return XmlLabelRef(text)
+        val name = text.substring(0, hash).trim()
+        if (name.isEmpty()) return null
+        val parts = text.substring(hash + 1).split(':')
+        val color = parts.getOrNull(0)
+            ?.takeIf { it.length == 6 }
+            ?.toIntOrNull(16)
+            ?.let { (0xFF000000L or it.toLong()).toInt() }
+        val order = parts.getOrNull(1)?.toIntOrNull()
+        return XmlLabelRef(name, color, order)
     }
 
     private fun normalizeHeader(header: String): String {
@@ -74,6 +107,8 @@ object VaultCodec {
             "password", "pass", "密码" -> "password"
             "url", "website", "网址", "链接" -> "url"
             "notes", "note", "备注", "注释" -> "notes"
+            "标签详情", "labeldetail" -> "labeldetail"
+            "labels", "label", "标签" -> "labels"
             else -> value
         }
     }

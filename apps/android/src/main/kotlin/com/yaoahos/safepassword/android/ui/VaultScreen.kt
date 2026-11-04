@@ -176,6 +176,9 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
     LaunchedEffect(state.search, state.filterLabelId, state.onlyFavorites, state.sortMode, state.sortAscending) {
         selectedIds = emptySet()
         selectionMode = false
+        // 换了筛选条件就是另一批条目了，列表要回到顶部，
+        // 否则会停在上一次滚动的位置，看起来像「顶部条目不见了」。
+        listState.scrollToItem(0)
     }
 
     ModalNavigationDrawer(
