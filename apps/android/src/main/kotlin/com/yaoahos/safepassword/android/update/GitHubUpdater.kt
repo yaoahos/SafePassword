@@ -26,40 +26,87 @@ data class GitHubRelease(
     val assets: List<GitHubAsset> = emptyList()
 )
 
-/** GitHub 限流（未登录每月 60 次/IP）；重试无用，需要让用户等窗口重置。 */
-class RateLimitedException(message: String) : Exception(message)
+/**
+ * 检查更新的失败原因。
+ *
+ * 与桌面端 `UpdateFailure` 一一对应：每种原因都有自己的提示语，
+ * 不要再用「检查更新失败，请检查网络后重试」把限流、404、服务端故障混成一句。
+ */
+sealed class UpdateException(message: String) : Exception(message)
+
+/** GitHub 限流（未登录每 IP 每小时 60 次）。[resetEpoch] 是可重试的 Unix 秒，拿不到时为空。 */
+class RateLimitedException(val resetEpoch: Long? = null) : UpdateException("更新检查已被限制")
+
+/** 仓库里还没有发布过正式版本（HTTP 404）。 */
+class NoReleaseException : UpdateException("还没有可更新的版本")
+
+/** 更新服务返回了 4xx/5xx（除限流与 404 外）。 */
+class UpdateUnavailableException(val status: Int) : UpdateException("更新服务暂时不可用：HTTP $status")
+
+/** 返回内容不是预期的 JSON，多半被代理或认证页改写了。 */
+class BadPayloadException : UpdateException("更新服务返回内容异常")
+
+/** 下载安装包失败（地址不合法、被劫持、内容不像 APK）。消息可直接展示给用户。 */
+class UpdateDownloadException(message: String) : UpdateException(message)
 
 /** 通过 GitHub Releases API 检查并下载新版本。 */
 object GitHubUpdater {
     const val REPO = "yaoahos/SafePassword"
     const val RELEASES_PAGE = "https://github.com/$REPO/releases"
 
+    /** 只取最新一版，用于检查更新；比拉整页列表省流量，也少烧限流配额。 */
+    private const val LATEST_API = "https://api.github.com/repos/$REPO/releases/latest"
+
+    /** 更新日志要列多版，才需要列表接口。 */
     private const val RELEASES_API = "https://api.github.com/repos/$REPO/releases?per_page=50"
+
     private const val USER_AGENT = "SafePassword-Android"
+
+    /** 安装包至少这么大；被劫持成错误页时不可能达到。 */
+    private const val MIN_APK_BYTES = 512L * 1024L
+
+    /** 只允许从 GitHub 的域名取安装包。 */
+    private val ALLOWED_HOSTS = listOf(
+        "github.com",
+        "api.github.com",
+        "objects.githubusercontent.com",
+        "github-releases.githubusercontent.com"
+    )
 
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
     }
 
-    /**
-     * 拉取发布列表。
-     *
-     * 刚装好应用或刚连上网络时，头几次请求偶尔会失败（DNS 还没就绪、TLS 握手被掐、
-     * 代理/VPN 正在切换路由）。这些都是瞬时的，重试一两次基本就过去了；
-     * 但 403/429 是 GitHub 限流（未登录每 IP 每小时 60 次），重试没有意义，直接抛出去。
-     */
+    /** 拉取最新版本（单条）。 */
+    fun fetchLatest(attempts: Int = 3): GitHubRelease {
+        val text = fetchWithRetry(LATEST_API, attempts)
+        return runCatching { json.decodeFromString<GitHubRelease>(text) }
+            .getOrElse { throw BadPayloadException() }
+    }
+
+    /** 拉取发布列表（更新日志用）。 */
     fun fetchReleases(attempts: Int = 3): List<GitHubRelease> {
+        val text = fetchWithRetry(RELEASES_API, attempts)
+        return runCatching { json.decodeFromString<List<GitHubRelease>>(text) }
+            .getOrElse { throw BadPayloadException() }
+    }
+
+    /**
+     * 网络抖动重试两三次就够；限流、404、4xx/5xx、内容异常都不重试——
+     * 重试不会变好，只会多烧一份配额。
+     */
+    private fun fetchWithRetry(url: String, attempts: Int): String {
         var lastError: Exception? = null
         for (attempt in 1..attempts) {
             try {
-                return requestOnce()
-            } catch (e: RateLimitedException) {
+                return requestBody(url)
+            } catch (e: UpdateException) {
                 throw e
             } catch (e: Exception) {
                 lastError = e
                 if (attempt < attempts) {
-                    // 700ms → 1600ms，给网络栈一点时间把 DNS/连接准备好。
+                    // 700ms → 1400ms，给网络栈一点时间把 DNS/连接准备好。
                     Thread.sleep(700L * attempt)
                 }
             }
@@ -67,8 +114,8 @@ object GitHubUpdater {
         throw lastError ?: IllegalStateException("检查更新失败")
     }
 
-    private fun requestOnce(): List<GitHubRelease> {
-        val connection = (URL(RELEASES_API).openConnection() as HttpURLConnection).apply {
+    private fun requestBody(url: String): String {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
             readTimeout = 20_000
             requestMethod = "GET"
@@ -77,25 +124,21 @@ object GitHubUpdater {
         }
         try {
             val code = connection.responseCode
-            if (code == 403 || code == 429) {
-                // 未登录调用有配额：剩余次数为 0 时会被拒，窗口按小时重置。
-                val remaining = connection.getHeaderField("X-RateLimit-Remaining")
-                val reset = connection.getHeaderField("X-RateLimit-Reset")
+            if (code == 404) {
                 connection.errorStream?.bufferedReader()?.use { it.readText() }
-                throw RateLimitedException(
-                    "GitHub 限流：剩余 $remaining 次" + if (reset.isNullOrBlank()) "" else "，重置时间戳 $reset"
-                )
+                throw NoReleaseException()
+            }
+            if (code == 403 || code == 429) {
+                val reset = connection.getHeaderField("X-RateLimit-Reset")?.trim()?.toLongOrNull()
+                connection.errorStream?.bufferedReader()?.use { it.readText() }
+                throw RateLimitedException(reset)
             }
             if (code !in 200..299) {
-                // 200 但内容不是 JSON 是被中间设备劫持改写。
                 val detail = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                throw IllegalStateException(
-                    "GitHub 返回 HTTP $code" + if (detail.isBlank()) "" else "：${detail.take(160)}"
-                )
+                android.util.Log.w("GitHubUpdater", "更新服务返回 HTTP $code：${detail.take(200)}")
+                throw UpdateUnavailableException(code)
             }
-            val text = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            return runCatching { json.decodeFromString<List<GitHubRelease>>(text) }
-                .getOrElse { throw IllegalStateException("GitHub 返回的数据无法解析") }
+            return connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
         } finally {
             connection.disconnect()
         }
@@ -129,7 +172,22 @@ object GitHubUpdater {
         )
     }
 
+    /**
+     * 下载安装包。
+     *
+     * 三道校验（与桌面端一致）：地址必须 https 且落在 GitHub 域名下、
+     * 内容必须是 ZIP（APK 就是 zip，头两字节 "PK"）、体积不能小得离谱。
+     * 少了这些，被劫持成一张错误页也会被当安装包交给系统。
+     */
     fun download(url: String, target: File, onProgress: (Int) -> Unit) {
+        if (!url.startsWith("https://")) throw UpdateDownloadException("安装包地址无效")
+        val host = url.removePrefix("https://")
+            .substringBefore('/')
+            .substringBefore('?')
+            .substringBefore('#')
+        if (ALLOWED_HOSTS.none { host.equals(it, ignoreCase = true) }) {
+            throw UpdateDownloadException("安装包地址无效")
+        }
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20_000
             readTimeout = 60_000
@@ -139,7 +197,7 @@ object GitHubUpdater {
         }
         try {
             val code = connection.responseCode
-            if (code !in 200..299) throw IllegalStateException("下载失败，HTTP $code")
+            if (code !in 200..299) throw UpdateDownloadException("下载失败，HTTP $code")
             val total = connection.contentLengthLong
             target.parentFile?.mkdirs()
             var downloaded = 0L
@@ -163,12 +221,22 @@ object GitHubUpdater {
                     output.flush()
                 }
             }
-            if (target.length() <= 0L) throw IllegalStateException("下载的文件为空")
+            if (target.length() < MIN_APK_BYTES || !looksLikeZip(target)) {
+                target.delete()
+                throw UpdateDownloadException("安装包内容异常，已取消下载")
+            }
             onProgress(100)
         } finally {
             connection.disconnect()
         }
     }
+
+    private fun looksLikeZip(file: File): Boolean = runCatching {
+        file.inputStream().use { input ->
+            val head = ByteArray(2)
+            input.read(head) == 2 && head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte()
+        }
+    }.getOrDefault(false)
 
     fun isNewer(candidate: String, current: String): Boolean = compare(candidate, current) > 0
 
