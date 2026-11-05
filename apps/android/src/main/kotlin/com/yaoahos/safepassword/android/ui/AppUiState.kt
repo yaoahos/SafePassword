@@ -91,8 +91,10 @@ fun visibleItems(state: AppUiState): List<VaultItem> {
     var items = vault.items.filter {
         it.status == com.yaoahos.safepassword.core.model.ItemStatus.ACTIVE
     }
-    val labelId = state.filterLabelId
-    if (!labelId.isNullOrBlank()) {
+    // 过滤用的标签必须在当前库里真的存在；否则（换了密码库、或标签被其它设备
+    // 删掉后同步下来）就当作没有筛选，避免首页莫名变成 0 条。
+    val labelId = state.filterLabelId?.takeIf { id -> vault.labels.any { it.id == id } }
+    if (labelId != null) {
         items = items.filter { labelId in it.labelIds }
     }
     if (state.onlyFavorites) {
@@ -121,8 +123,12 @@ fun visibleItems(state: AppUiState): List<VaultItem> {
         SortMode.UPDATED -> java.util.Comparator<VaultItem> { a, b -> a.updatedAt.compareTo(b.updatedAt) }
         SortMode.CREATED -> java.util.Comparator<VaultItem> { a, b -> a.createdAt.compareTo(b.createdAt) }
     }
-    val sorted = items.sortedWith(if (state.sortAscending) comparator else comparator.reversed())
-    return sorted.sortedByDescending { it.favorite }
+    // 先升序排，再整体反转来表示降序——与桌面端 `sort(升序)` + `reverse()` 完全同构。
+    // 不能写成 comparator.reversed()：时间戳打平时稳定排序会保留原顺序，
+    // 而桌面端的整体反转会把并列那一段也翻过去，两端就成镜像了。
+    val sorted = items.sortedWith(comparator)
+    val ordered = if (state.sortAscending) sorted else sorted.reversed()
+    return ordered.sortedByDescending { it.favorite }
 }
 
 fun trashedItems(state: AppUiState): List<VaultItem> =

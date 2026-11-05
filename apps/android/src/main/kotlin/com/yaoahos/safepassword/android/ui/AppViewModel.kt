@@ -1644,6 +1644,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         unlocked = true,
                         screen = Screen.Vault,
                         busy = false,
+                        // 换库必须清掉上一个库的视图筛选，否则会拿旧标签 id 去筛新库，
+                        // 首页变成「0 个条目 + 标题显示标签」。
+                        filterLabelId = defaultLabelIdFor(opened.vault),
+                        search = "",
+                        onlyFavorites = false,
                         security = SecurityAnalyzer.analyze(opened.vault),
                         fingerprintPrompt = it.fingerprintAvailable && !saved,
                         biometricSaved = saved,
@@ -1755,6 +1760,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         screen = Screen.Vault,
                         busy = false,
                         syncStatus = "",
+                        // 恢复也是一个「换库」动作：上一个库的标签筛选/搜索词必须清掉，
+                        // 否则新库会按不存在的标签过滤，显示 0 条。
+                        filterLabelId = defaultLabelIdFor(opened.vault),
+                        search = "",
+                        onlyFavorites = false,
                         security = SecurityAnalyzer.analyze(opened.vault),
                         fingerprintPrompt = it.fingerprintAvailable && !saved,
                         biometricSaved = saved,

@@ -133,7 +133,9 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
     val activeLabelName = labels.firstOrNull { it.id == state.filterLabelId }?.name
     val collectionTitle = when {
         state.onlyFavorites -> "收藏"
-        !state.filterLabelId.isNullOrBlank() -> activeLabelName ?: "标签"
+        // 只有「当前库里真的存在这个标签」才把标题换成标签名；拿到脏 id
+        // （换库残留、标签被删）时退回「全部」，不再显示硬编码的「标签」。
+        activeLabelName != null -> activeLabelName
         else -> "全部"
     }
     val vaultName = state.activeMeta?.name ?: "我的密码库"
