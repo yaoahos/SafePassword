@@ -1,0 +1,20 @@
+# 统一换行符：源码以 LF 入库，Windows 脚本以 CRLF 检出
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+gradlew text eol=lf
+
+# 二进制文件不做文本转换
+*.jar binary
+*.keystore binary
+*.jks binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.apk binary
