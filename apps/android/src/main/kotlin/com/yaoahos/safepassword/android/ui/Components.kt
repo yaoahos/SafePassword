@@ -97,6 +97,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yaoahos.safepassword.android.R
 import com.yaoahos.safepassword.core.model.TemplateCatalog
+import com.yaoahos.safepassword.core.ui.IconPalette
 import com.yaoahos.safepassword.core.model.VaultItem
 import com.yaoahos.safepassword.core.security.StrengthResult
 import java.text.SimpleDateFormat
@@ -683,15 +684,11 @@ fun ItemIcon(item: VaultItem, size: Dp = 46.dp, corner: Dp = 13.dp, load: Boolea
         return
     }
 
-    val fallbackPalette = listOf(
-        Color(0xFF2563EB), Color(0xFF7C3AED), Color(0xFFDB2777),
-        Color(0xFF059669), Color(0xFFEA580C), Color(0xFF0891B2),
-        Color(0xFF4F46E5), Color(0xFFB45309)
-    )
     // 默认图标颜色只跟标题有关：同一个标题在任何设备上都得到同一个颜色，
     // 不会再出现「这台绿色、那台蓝色」的情况。id 各端不同，不能参与计算。
+    // 色板与算法在 core 的 IconPalette 里，必须与桌面端保持一致。
     val fallbackColor = remember(item.title) {
-        fallbackPalette[Math.floorMod(item.title.hashCode(), fallbackPalette.size)]
+        Color(IconPalette.colorFor(item.title))
     }
     Box(
         modifier = Modifier
