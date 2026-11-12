@@ -37,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -79,8 +80,9 @@ fun VaultManagerScreen(viewModel: AppViewModel, state: AppUiState) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Button(onClick = { showCreate = true }, modifier = Modifier.fillMaxWidth()) {
@@ -219,7 +221,7 @@ fun VaultManagerScreen(viewModel: AppViewModel, state: AppUiState) {
             onDismissRequest = { switchTarget = null },
             title = { Text("切换到云端密码库") },
             text = {
-                Column {
+                Column(Modifier.imePadding()) {
                     Text(
                         "将把「${entry.name}」下载到本机并切换过去。请输入它的主密码。",
                         style = MaterialTheme.typography.bodySmall,
@@ -238,10 +240,9 @@ fun VaultManagerScreen(viewModel: AppViewModel, state: AppUiState) {
                     )
                     if (switchError) {
                         Spacer(Modifier.height(6.dp))
-                        Text(
-                            "主密码至少 6 位",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall
+                        InlineNotice(
+                            text = "主密码至少 6 位",
+                            accent = MaterialTheme.colorScheme.error
                         )
                     }
                 }

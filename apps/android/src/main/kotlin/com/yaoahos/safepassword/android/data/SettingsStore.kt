@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import java.io.File
 import com.yaoahos.safepassword.core.json.AppJson
 import com.yaoahos.safepassword.core.sync.WebDavConfig
 import kotlinx.serialization.Serializable
@@ -154,7 +155,7 @@ class SettingsStore(context: Context) {
         private var degradedToPlaintext: Boolean = false
 
         fun createPrefs(context: Context, fileName: String, alias: String): SharedPreferences {
-            return try {
+            fun createEncrypted(): SharedPreferences {
                 val masterKey = MasterKey.Builder(context)
                     .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                     .build()
@@ -165,13 +166,35 @@ class SettingsStore(context: Context) {
                     EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                     EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
                 )
-                prefs
-            } catch (e: Exception) {
-                degradedToPlaintext = true
-                // 加密存储不可用时不再静默降级：记录日志，并由上层拒绝保存敏感字段。
-                Log.w(TAG, "加密存储不可用，$fileName 已退回明文；将拒绝保存敏感内容", e)
-                context.getSharedPreferences("${fileName}_fallback", Context.MODE_PRIVATE)
+                // 探测一次真实读取：部分版本 create 不立即解密，第一次读才抛。
+                @Suppress("UNUSED_VARIABLE")
+                val probe = prefs.all
+                return prefs
             }
+            return try {
+                createEncrypted()
+            } catch (e: Exception) {
+                // 换机/恢复备份后 Keystore 密钥不跟着走，旧密文配置会打不开。
+                // 这里自动删掉失效密文重建一份新的加密配置：只丢本机设置，
+                // 密码库文件不在 SharedPreferences 里，不受影响。
+                try {
+                    Log.w(TAG, "加密配置无法解密，正在重建：$fileName", e)
+                    deleteEncryptedPrefs(context, fileName)
+                    createEncrypted()
+                } catch (e2: Exception) {
+                    degradedToPlaintext = true
+                    // 加密存储不可用时不再静默降级：记录日志，并由上层拒绝保存敏感字段。
+                    Log.w(TAG, "加密存储不可用，$fileName 已退回明文；将拒绝保存敏感内容", e2)
+                    context.getSharedPreferences("${fileName}_fallback", Context.MODE_PRIVATE)
+                }
+            }
+        }
+
+        /** 删除失效的 EncryptedSharedPreferences 密文文件（含 .bak）。 */
+        private fun deleteEncryptedPrefs(context: Context, fileName: String) {
+            val dir = File(context.applicationInfo.dataDir, "shared_prefs")
+            File(dir, "$fileName.xml").delete()
+            File(dir, "$fileName.xml.bak").delete()
         }
     }
 }

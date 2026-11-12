@@ -3,7 +3,7 @@ package com.yaoahos.safepassword.core.model
 data class FieldDef(
     val label: String,
     val type: FieldType = FieldType.TEXT,
-    val sensitive: Boolean = type == FieldType.PASSWORD || type == FieldType.SECRET
+    val sensitive: Boolean = type == FieldType.PASSWORD || type == FieldType.SECRET || type == FieldType.TOTP
 )
 
 data class TemplateDef(

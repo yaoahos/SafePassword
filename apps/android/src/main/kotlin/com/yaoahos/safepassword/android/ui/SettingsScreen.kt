@@ -49,6 +49,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -131,8 +132,9 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             SectionCard(title = "安全") {
@@ -495,14 +497,18 @@ private fun ChangePasswordDialog(onDismiss: () -> Unit, onConfirm: (String, Stri
         onDismissRequest = onDismiss,
         title = { Text("修改主密码") },
         text = {
-            Column {
+            Column(Modifier.imePadding()) {
                 PasswordField(oldPassword, { oldPassword = it }, "旧主密码")
                 Spacer(Modifier.height(8.dp))
                 PasswordField(newPassword, { newPassword = it }, "新主密码（至少 8 位）")
                 Spacer(Modifier.height(8.dp))
                 PasswordField(confirm, { confirm = it }, "确认新主密码")
                 if (mismatch) {
-                    Text("两次输入不一致", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(6.dp))
+                    InlineNotice(
+                        text = "两次输入不一致",
+                        accent = MaterialTheme.colorScheme.error
+                    )
                 }
             }
         },
@@ -528,7 +534,7 @@ private fun ImportVaultDialog(
         onDismissRequest = onDismiss,
         title = { Text("导入加密保险库") },
         text = {
-            Column {
+            Column(Modifier.imePadding()) {
                 PasswordField(password, { password = it }, "原数据库主密码")
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(

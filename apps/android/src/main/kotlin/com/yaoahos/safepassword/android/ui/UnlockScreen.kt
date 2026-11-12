@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -145,8 +146,9 @@ fun UnlockScreen(viewModel: AppViewModel, state: AppUiState, activity: MainActiv
         modifier = Modifier
             .fillMaxHeight()
             .widthIn(max = 480.dp)
+            .imePadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 28.dp, vertical = 48.dp),
+                        .padding(horizontal = 28.dp, vertical = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -356,7 +358,7 @@ fun CreateVaultDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Unit)
         onDismissRequest = onDismiss,
         title = { Text("创建密码库") },
         text = {
-            Column {
+            Column(Modifier.imePadding()) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -384,7 +386,11 @@ fun CreateVaultDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Unit)
                     onToggleVisibility = { visible = !visible }
                 )
                 if (mismatch) {
-                    Text("两次输入不一致", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(6.dp))
+                    InlineNotice(
+                        text = "两次输入不一致",
+                        accent = MaterialTheme.colorScheme.error
+                    )
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -429,7 +435,7 @@ fun RestoreVaultDialog(
         onDismissRequest = onDismiss,
         title = { Text("从本地恢复") },
         text = {
-            Column {
+            Column(Modifier.imePadding()) {
                 OutlinedButton(
                     onClick = { picker.launch(arrayOf("*/*")) },
                     modifier = Modifier.fillMaxWidth()

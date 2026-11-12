@@ -24,6 +24,8 @@ enum class FieldType {
     PASSWORD,
     /** 与密码一样加密、掩码显示，但不参与弱密码/重复/泄露等安全检查。 */
     SECRET,
+    /** TOTP 认证器：value 存 Base32 密钥或 otpauth:// 链接，用于生成网站/应用的 6 位动态码。 */
+    TOTP,
     URL,
     EMAIL,
     PHONE,
@@ -58,7 +60,7 @@ data class Field(
     var label: String,
     var value: String = "",
     var type: FieldType = FieldType.TEXT,
-    var sensitive: Boolean = type == FieldType.PASSWORD || type == FieldType.SECRET,
+    var sensitive: Boolean = type == FieldType.PASSWORD || type == FieldType.SECRET || type == FieldType.TOTP,
     /** 历史值，最新的在前；只对 PASSWORD / SECRET 记录。 */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     var history: MutableList<FieldHistory> = mutableListOf(),
@@ -69,10 +71,12 @@ data class Field(
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     var fileMime: String = ""
 ) {
-    /** FILE 字段的原始字节（base64 解码）；非 FILE 或无内容时为 null。 */
+    /** FILE 字段的原始字节（base64 解码）；非 FILE 或无内容时为 null。解码容忍折行/空白。 */
     fun fileBytes(): ByteArray? {
         if (type != FieldType.FILE || value.isBlank()) return null
-        return runCatching { java.util.Base64.getDecoder().decode(value) }.getOrNull()
+        return runCatching {
+            java.util.Base64.getDecoder().decode(value.filterNot { it.isWhitespace() })
+        }.getOrNull()
     }
 }
 

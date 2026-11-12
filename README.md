@@ -4,12 +4,12 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 - 项目名：`SafePassword`
 - 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.0.4`（versionCode 5）
+- 正式版本：`1.0.5`（versionCode 6）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`SafePassword-1.0.4-release.apk`
-- APK 大小：2,624,846 字节
-- SHA-256：`cd5f839def4144cbeeb6c736ea6504519a601f1c8f83ba145c5227472bc838b6`
+- 正式 APK：`SafePassword-1.0.5-release.apk`
+- APK 大小：2,641,862 字节
+- SHA-256：`40e38966cfe8e828c649863049d6b60b1976126ce67da04f810ecade46d185e0`
 - 发布下载：[Releases](https://github.com/yaoahos/SafePassword/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
@@ -51,7 +51,7 @@ SafePassword 面向希望把密码数据掌握在自己手里的用户。它不�
 
 **条目**
 - 新建、编辑、查看、复制、删除；回收站支持软删除、恢复与永久删除。
-- 字段类型：文本、密码、秘密、多行文本、网址、邮箱、电话、文件（单个 ≤50KB 小文件）；支持增删、改名与上下移动。
+- 字段类型：文本、密码、秘密、TOTP 动态验证码、多行文本、网址、邮箱、电话、文件（单个 ≤50KB 小文件）；支持增删、改名与上下移动。
 - 密码独立显示/隐藏，附强度提示；可收藏、打多标签、批量选择。
 - 支持自定义图片图标（压缩为 256×256 正方形，按需解码）。
 
@@ -222,29 +222,29 @@ apps/android/build/outputs/apk/release/android-release.apk
 重命名并复制到 `dist/`：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.4-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.5-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose dist\SafePassword-1.0.4-release.apk
-aapt.exe dump badging dist\SafePassword-1.0.4-release.apk
+apksigner.bat verify --verbose dist\SafePassword-1.0.5-release.apk
+aapt.exe dump badging dist\SafePassword-1.0.5-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.yaoahos.safepassword`
-- `versionCode: 5`
-- `versionName: 1.0.4`
+- `versionCode: 6`
+- `versionName: 1.0.5`
 - `application-label: SafePassword`
 - APK Signature Scheme v2：通过
 - 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`
 
 ### 6. 测试
 
-- `:core:test` 覆盖加密、密码库容器、WebDAV 客户端、XML 导入导出、工具函数等。
-- 当前核心测试 41/41 通过。
+- `:core:test` 覆盖加密、密码库容器、WebDAV 客户端、XML 导入导出、TOTP（RFC 6238 向量）、工具函数等。
+- 当前核心测试 52/52 通过。
 
 ---
 
@@ -267,6 +267,7 @@ aapt.exe dump badging dist\SafePassword-1.0.4-release.apk
 - 同步：工具 → WebDAV 同步，填写服务器地址、用户名、密码和远程目录后先「测试连接」再「保存并立即同步」；多设备用同一远程目录即可共享同一批密码库文件，每个密码库各自一个文件，由 `SafePassword-index.json` 记录清单。
 - 备份：设置 → 本地备份，先选择保存目录（系统文件选择器，可放 SD 卡或网盘同步目录），再创建加密备份或设置自动备份间隔；恢复时需输入该备份的主密码。
 - 导入导出：工具 → 导入密码支持多选 CSV、JSON 与 XML；设置 → 数据可导出 CSV、JSON、XML。
+- TOTP 认证器：新建/编辑字段时选「动态验证码」类型，把网站给出的 `otpauth://` 链接或 Base32 密钥（密钥文件码）填进字段值；详情页实时显示 6 位动态码与剩余秒数，点复制按钮复制的是当前动态码，眼睛按钮可查看密钥原文。
 
 **平板与横屏**：内容区限宽，密码库与工具页使用多列布局，顶栏、抽屉、详情和编辑页保持同一套结构，旋转屏幕后页面状态尽量保留。
 
@@ -323,8 +324,8 @@ Gradle 模块路径：
 - 仅支持 WebDAV 同步，不接入专有云 API。
 - 不包含密码填充/自动填充。
 - 不包含共享协作、团队空间。
-- 不包含 2FA/TOTP。
-- 不支持条目级附件管理；字段级仅限单个 ≤50KB 小文件。
+- 不提供浏览器密码自动填充或系统级凭据注入。
+- 不支持条目级附件管理；字段级仅限单个 ≤50KB 小文件，且不支持应用内预览（可导出到本地查看）。
 - 主密码遗忘后无法恢复；请务必保留备份。
 - XML 导入以标准条目、字段、标签、备注和图标为主；原版附件文件不会导入。
 - 云端冲突默认本地优先；如需以云端为准，请使用“拉取云端数据（覆盖本地）”。
@@ -353,6 +354,14 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/11/12 · 1.0.5**
+- 新增 TOTP 认证器字段：保存 otpauth:// 链接或 Base32 密钥，详情页实时生成 6 位动态码并可一键复制，可作 GitHub 等双因素登录的认证器
+- 新增 应用内提示改为顶部彩色提示条（四态），自动消失、点击即关；弹窗错误提示改为彩色行内提示条
+- 修复 输入主密码等输入框被输入法遮挡（含创建密码库、WebDAV 恢复等弹窗）
+- 修复 小米换机等场景后无法保存 WebDAV 密码：加密配置失效时自动重建（只重置本机设置）
+- 优化 WebDAV 服务器地址留空保存时自动填入坚果云地址并回显
+- 变更 文件字段不再支持预览，保留导出到本地
 
 **2026/11/12 · 1.0.4**
 - 新增 文件字段，可保存单个 50KB 以内的小文件，随密码库加密与同步

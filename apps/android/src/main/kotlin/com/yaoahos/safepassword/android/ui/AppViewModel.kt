@@ -1063,7 +1063,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setWebDav(config: WebDavConfig) {
         // WebDAV 密码属于敏感凭据：系统加密存储不可用时拒绝保存，避免明文落盘。
         if (config.password.isNotBlank() && !container.settings.encrypted) {
-            fail("系统加密存储不可用，无法安全保存 WebDAV 密码；请先恢复设备锁屏后再试")
+            fail("系统加密存储不可用，无法安全保存 WebDAV 密码；请确认已设置设备锁屏后重试")
             return
         }
         container.settings.webDav = config

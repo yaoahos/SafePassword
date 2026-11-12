@@ -2,12 +2,15 @@ package com.yaoahos.safepassword.android.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -20,15 +23,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -70,7 +72,8 @@ import androidx.compose.ui.text.font.FontWeight
 @Composable
 fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val snackbar = remember { SnackbarHostState() }
+    // 顶部彩色提示条：message 走成功态、error 走错误态；显示后立即清掉 state。
+    var notice by remember { mutableStateOf<Pair<String, NoticeStyle>?>(null) }
     val screenStateHolder = rememberSaveableStateHolder()
 
     LaunchedEffect(state.settings.screenshotAllowed) {
@@ -79,19 +82,20 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
 
     LaunchedEffect(Unit) {
         // 从通知点安装失败的提示。通知的点击事件比 Compose 首帧先到，
-        // 所以先挂在 Activity 上，等界面起来后再交给 snackbar 显示。
+        // 所以先挂在 Activity 上，等界面起来后再交给顶部提示条显示。
         activity.consumePendingInstallError()?.let { viewModel.showMessage(it) }
     }
 
     LaunchedEffect(state.message) {
         val message = state.message ?: return@LaunchedEffect
-        val showJob = launch {
-            snackbar.showSnackbar(message, duration = SnackbarDuration.Short)
-        }
-        delay(2200)
-        snackbar.currentSnackbarData?.dismiss()
-        showJob.cancel()
+        notice = message to NoticeStyle.SUCCESS
         viewModel.consumeMessage()
+    }
+
+    LaunchedEffect(state.error) {
+        val error = state.error ?: return@LaunchedEffect
+        notice = error to NoticeStyle.ERROR
+        viewModel.consumeError()
     }
 
     BackHandler(
@@ -113,39 +117,10 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= 600.dp
             CompositionLocalProvider(LocalWideLayout provides wide) {
+                Box(Modifier.fillMaxSize()) {
                 Scaffold(
                     contentWindowInsets = WindowInsets(0),
-                    snackbarHost = {
-                        SnackbarHost(
-                            hostState = snackbar,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .navigationBarsPadding()
-                        ) { data ->
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.BottomCenter
-                            ) {
-                                Surface(
-                                    modifier = Modifier
-                                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                                        .wrapContentWidth(),
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color(0xFF1C1B1F),
-                                    contentColor = Color.White
-                                ) {
-                                    Text(
-                                        text = data.visuals.message,
-                                        modifier = Modifier.padding(
-                                            horizontal = 16.dp,
-                                            vertical = 11.dp
-                                        ),
-                                        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    snackbarHost = {}
                 ) { padding ->
                     Box(
                         modifier = Modifier
@@ -262,15 +237,26 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                     }
                 }
 
-                state.error?.let { error ->
-                    AlertDialog(
-                        onDismissRequest = { viewModel.consumeError() },
-                        title = { Text("出错了") },
-                        text = { Text(error) },
-                        confirmButton = {
-                            TextButton(onClick = { viewModel.consumeError() }) { Text("知道了") }
-                        }
-                    )
+                // 顶部彩色提示条（替代旧底部黑底 snackbar）：
+                // 圆角卡片限宽居中、顶部滑入、自动消失、点一下即关。
+                AnimatedVisibility(
+                    visible = notice != null,
+                    enter = slideInVertically(initialOffsetY = { -it / 2 }) + fadeIn(tween(220)),
+                    exit = slideOutVertically(targetOffsetY = { -it / 2 }) + fadeOut(tween(150)),
+                    modifier = Modifier.align(Alignment.TopCenter)
+                ) {
+                    val current = notice
+                    if (current != null) {
+                        TopNotice(
+                            message = current.first,
+                            style = current.second,
+                            onDismiss = { notice = null },
+                            modifier = Modifier
+                                .statusBarsPadding()
+                                .padding(top = 6.dp, start = 12.dp, end = 12.dp)
+                        )
+                    }
+                }
                 }
 
                 state.updateInfo?.let { info ->
@@ -344,7 +330,7 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                         onDismissRequest = { viewModel.dismissNameConflict() },
                         title = null,
                         text = {
-                            Column {
+                            Column(Modifier.imePadding()) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Box(
                                         Modifier
