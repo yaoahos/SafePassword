@@ -4,12 +4,12 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 - 项目名：`SafePassword`
 - 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.0.7`（versionCode 8）
+- 正式版本：`1.0.8`（versionCode 9）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`SafePassword-1.0.7-release.apk`
-- APK 大小：3,019,059 字节
-- SHA-256：`0bcca27b63acda490d34d8d870bac6f0f8f7a49bcd21c1dbdea1480f64459290`
+- 正式 APK：`SafePassword-1.0.8-release.apk`
+- APK 大小：3,035,839 字节
+- SHA-256：`9429dd3b5fb37c4b1443b93453a5f4ac995ec65e67f138cc82aa9f14afa58249`
 - 发布下载：[Releases](https://github.com/yaoahos/SafePassword/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
@@ -117,7 +117,7 @@ SafePassword 面向希望把密码数据掌握在自己手里的用户。它不�
 - 指纹被重新录入或全部删除时，系统会作废该密钥，应用自动清除失效凭据并要求重新开启。
 - 指纹传感器硬件损坏等无法使用的情况出现时，应用自动关闭指纹解锁，不再要求先验证指纹才能关闭。
 - 修改主密码后指纹凭据自动失效，需要重新开启（避免旧密码残留在磁盘上）。
-- 支持自动锁定；应用退到后台超过设定时间后再回来需要重新解锁（主密码或指纹）。
+- 支持自动锁定；应用退到后台、或停留在前台闲置超过设定时间后需要重新解锁（主密码或指纹）。
   锁定会清除内存中的主密码与解密后的数据，但不结束应用进程。
 - 生物识别失败时保留主密码解锁入口。
 
@@ -223,21 +223,21 @@ apps/android/build/outputs/apk/release/android-release.apk
 重命名并复制到 `dist/`：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.7-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.8-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose dist\SafePassword-1.0.7-release.apk
-aapt.exe dump badging dist\SafePassword-1.0.7-release.apk
+apksigner.bat verify --verbose dist\SafePassword-1.0.8-release.apk
+aapt.exe dump badging dist\SafePassword-1.0.8-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.yaoahos.safepassword`
 - `versionCode: 7`
-- `versionName: 1.0.7`
+- `versionName: 1.0.8`
 - `application-label: SafePassword`
 - APK Signature Scheme v2：通过
 - 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`、`CAMERA`（仅扫码录入动态验证码时使用，可拒绝并从相册选图）
@@ -355,6 +355,17 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/11/13 · 1.0.8**
+- 修复 自动锁定不生效：解锁后停留在前台、超过设定时间也会锁定（以前只在切到后台计时）；计时改用开机时钟，改系统时间不影响判定
+- 修复 冷启动后第一次在详情页从左边缘右滑没反应、要滑第二次才返回
+- 修复 从搜索框点进条目详情后输入法仍留在屏幕上
+- 优化 条目详情里的空字段直接留空，不再显示破折号
+- 优化 添加字段时字段名留空按类型自动命名（密码、网址、动态验证码等）
+- 优化 动态验证码字段不再遮挡显示、字段内不出现查看按钮；字段菜单去掉「复制」，「扫码录入密钥」简化为「扫码」
+- 优化 文件字段在添加和编辑时显示字段名
+- 优化 编辑页「添加字段」与上方输入框、下方白色卡片的间距一致
+- 变更 「锁定并清除内存中的主密码」的说明改为「回到桌面，需重新解锁」
 
 **2026/11/13 · 1.0.7**
 - 修复 实时扫码没反应：解码结果改回主线程回调、分析分辨率提到 1280×720、相机启动失败会提示原因

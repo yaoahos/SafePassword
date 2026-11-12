@@ -387,6 +387,9 @@ fun ItemEditScreen(
             }
 
             CardAddAction(text = "添加字段") { showAddField = true }
+            // 按钮上方与下方各留 10dp：按钮行高 44dp、文字居中，上下对称之后
+            // 与上方输入框、下方白色卡片的间距在视觉上才一致（以前下方是 0）。
+            Spacer(Modifier.height(10.dp))
 
             SectionCard(title = "标签") {
                 if (state.activeVault?.labels.isNullOrEmpty()) {
@@ -496,7 +499,7 @@ fun ItemEditScreen(
             onUse = { password ->
                 val index = generatorTarget
                     .takeIf { it in item.fields.indices }
-                    ?: item.fields.indexOfFirst { it.type.masked }
+                    ?: item.fields.indexOfFirst { it.type.obscured }
                 item = if (index >= 0) {
                     item.copy(
                         fields = item.fields.toMutableList().also {
@@ -678,16 +681,30 @@ private fun EditorFieldBox(
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (field.type == FieldType.FILE) {
-            FileFieldBox(
-                field = field,
-                onPick = { filePicker.launch(arrayOf("*/*")) },
-                onClear = { onChange(field.copy(value = "", fileName = "", fileMime = "")) },
-                modifier = Modifier.weight(1f)
-            )
+            // 文件框本身只显示文件名与大小，看不出这个字段叫什么；
+            // 字段名放在框外上方一行小字，和详情页「字段名在上、值在下」的排布一致。
+            Column(modifier = Modifier.weight(1f)) {
+                if (field.label.isNotBlank()) {
+                    Text(
+                        field.label,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 13.dp, bottom = 3.dp)
+                    )
+                }
+                FileFieldBox(
+                    field = field,
+                    onPick = { filePicker.launch(arrayOf("*/*")) },
+                    onClear = { onChange(field.copy(value = "", fileName = "", fileMime = "")) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         } else {
-            // 动态验证码不是密码：框内不放「查看」按钮（密钥仍按 masked 遮挡显示），
-            // 扫码入口移到右侧 ⋮ 菜单里，跟「生成密码」同一位置。
-            val trailing: (@Composable () -> Unit)? = if (field.type.masked && field.type != FieldType.TOTP) {
+            // 动态验证码不是密码：框内不放任何按钮（不打点、不看、不扫），
+            // 扫码入口在右侧 ⋮ 菜单里。
+            val trailing: (@Composable () -> Unit)? = if (field.type.obscured) {
                 {
                     IconButton(onClick = { visible = !visible }) {
                         Icon(
@@ -712,7 +729,7 @@ private fun EditorFieldBox(
                 modifier = Modifier
                     .weight(1f)
                     .height(64.dp),
-                visualTransformation = if (field.type.masked && !visible) {
+                visualTransformation = if (field.type.obscured && !visible) {
                     PasswordVisualTransformation()
                 } else {
                     VisualTransformation.None
@@ -797,7 +814,12 @@ private fun EditorFieldBox(
                         }
                     )
                     HorizontalDivider()
-                    if (field.value.isNotBlank() && field.type != FieldType.FILE) {
+                    // 动态验证码不给「复制」：复制密钥原文对生成动态码没有帮助，
+                    // 真正要复制的是详情页里那 6 位码。
+                    if (field.value.isNotBlank() &&
+                        field.type != FieldType.FILE &&
+                        field.type != FieldType.TOTP
+                    ) {
                         DropdownMenuItem(
                             text = { Text("复制") },
                             leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
@@ -810,7 +832,7 @@ private fun EditorFieldBox(
                     if (field.type == FieldType.TOTP) {
                         // 扫码入口：原来在输入框内，现在跟「生成密码」同一位置。
                         DropdownMenuItem(
-                            text = { Text("扫码录入密钥") },
+                            text = { Text("扫码") },
                             leadingIcon = {
                                 Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
                             },
@@ -883,6 +905,15 @@ private fun fieldTypeIcon(type: FieldType): ImageVector = when (type) {
 /** 需要遮挡显示的字段类型：密码、秘密与 TOTP 密钥。 */
 private val FieldType.masked: Boolean
     get() = this == FieldType.PASSWORD || this == FieldType.SECRET || this == FieldType.TOTP
+
+/**
+ * 输入框里要打点遮挡的类型：只有密码与秘密。
+ *
+ * 动态验证码（TOTP）虽然也是敏感值，但用户要看的是它生成的 6 位码，
+ * 把密钥打成一排圆点既没意义、又跟「这不是密码」的定位冲突。
+ */
+private val FieldType.obscured: Boolean
+    get() = this == FieldType.PASSWORD || this == FieldType.SECRET
 
 
 /** 文件字段的选择框：未选时点按选文件，已选时显示文件名与大小。 */
@@ -1045,7 +1076,9 @@ private fun FieldDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(label.trim().ifBlank { "自定义字段" }, type) },
+                // 字段名留空时用类型名兜底：以前一律叫「自定义字段」，
+                // 加两个空名字段后列表里全是同名项，看不出哪个是密码、哪个是网址。
+                onClick = { onConfirm(label.trim().ifBlank { typeLabel(type) }, type) },
                 shape = RoundedCornerShape(50)
             ) {
                 Text(confirmText)

@@ -2,6 +2,7 @@ package com.yaoahos.safepassword.android.ui
 
 import android.app.Application
 import android.net.Uri
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.yaoahos.safepassword.android.SafePasswordApplication
@@ -67,7 +68,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private var active: VaultContainer? = null
     private var masterPassword: String? = null
+    /**
+     * 退到后台的时刻。
+     *
+     * 以前存的是 `System.currentTimeMillis()`，用户改过系统时间、或跨时区自动对时之后，
+     * `现在 - 后台时刻` 可能变成负数或几十小时，超时判定就不可靠了。
+     * 改用开机后的单调时钟（`elapsedRealtime`），与墙上时间无关。
+     */
     private var backgroundAt: Long = 0
+    /** 最近一次用户触摸的时刻（单调时钟），前台闲置超时据此判定。 */
+    private var lastInteractionAt: Long = SystemClock.elapsedRealtime()
+    /** 前台闲置计时任务；只在已解锁且超时 > 0 时运行。 */
+    private var idleJob: Job? = null
     private var syncJob: Job? = null
     private var updateJob: Job? = null
     /** 自动拉取（轮询云端是否有更新）的后台任务。 */
@@ -310,6 +322,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun lock() {
+        idleJob?.cancel()
+        idleJob = null
         active = null
         masterPassword = null
         pullJob?.cancel()
@@ -2226,16 +2240,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // ---------------------------------------------------------------- lifecycle
 
     fun onAppBackgrounded() {
-        if (_state.value.unlocked) backgroundAt = now()
+        if (_state.value.unlocked) backgroundAt = SystemClock.elapsedRealtime()
     }
 
     fun onAppForegrounded() {
         refreshBiometricAvailability()
         val at = backgroundAt
         backgroundAt = 0
+        // 回到前台先重置闲置计时：刚回来那一下不该被算成「闲置了很久」。
+        lastInteractionAt = SystemClock.elapsedRealtime()
         if (at <= 0 || !_state.value.unlocked) return
         val timeout = _state.value.settings.autoLockSeconds
-        if (timeout >= 0 && now() - at >= timeout * 1000L) {
+        if (timeout >= 0 && SystemClock.elapsedRealtime() - at >= timeout * 1000L) {
             lock()
         } else if (_state.value.nameConflictPending) {
             // 同名库冲突未解决：每次回到前台都再试一次，让提示重新出现。
@@ -2243,6 +2259,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             // 回到前台时顺带检查一次云端，是否真的拉取由 lastPullCheckAt 控制。
             checkRemoteIfDue()
+        }
+    }
+
+    /**
+     * 用户在界面上有任何触摸时调用（AppRoot 根节点上报）。
+     *
+     * 「自动锁定」以前只在切到后台时计时：应用开着放到一边，过了设定时间回来还是解锁状态，
+     * 用户看到的就是「超时锁定不生效」。现在前台闲置到点也会锁。
+     */
+    fun onUserInteraction() {
+        lastInteractionAt = SystemClock.elapsedRealtime()
+    }
+
+    /**
+     * 解锁成功后启动前台闲置计时；超时为 0（切后台立即锁）或 -1（从不）时不跑。
+     *
+     * 由 `AppRoot` 在 `unlocked` 或超时设置变化时调用——解锁入口有三处（新建库、解锁、导入），
+     * 放在界面层统一触发，避免每个入口各写一遍、漏掉一处就变成「超时不生效」。
+     */
+    fun restartIdleWatch() {
+        idleJob?.cancel()
+        idleJob = null
+        val seconds = _state.value.settings.autoLockSeconds
+        if (seconds <= 0) return
+        idleJob = viewModelScope.launch {
+            while (isActive) {
+                delay(1000)
+                if (!_state.value.unlocked) return@launch
+                if (SystemClock.elapsedRealtime() - lastInteractionAt >= seconds * 1000L) {
+                    lock()
+                    return@launch
+                }
+            }
         }
     }
 
