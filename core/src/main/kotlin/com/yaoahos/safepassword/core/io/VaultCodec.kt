@@ -19,7 +19,9 @@ object VaultCodec {
         val builder = StringBuilder()
         builder.append("标题,用户名,密码,网址,备注,标签,标签详情\r\n")
         vault.items.filter { it.status != com.yaoahos.safepassword.core.model.ItemStatus.TRASHED }.forEach { item ->
-            val username = item.fields.firstOrNull { it.label in listOf("用户名", "邮箱", "账号") }?.value.orEmpty()
+            val username = item.fields.firstOrNull {
+                it.type != FieldType.FILE && it.label in listOf("用户名", "邮箱", "账号")
+            }?.value.orEmpty()
             val password = item.primaryPassword.orEmpty()
             val labelObjects = item.labelIds.mapNotNull { id -> vault.label(id) }
             val labels = labelObjects.joinToString("|") { it.name }

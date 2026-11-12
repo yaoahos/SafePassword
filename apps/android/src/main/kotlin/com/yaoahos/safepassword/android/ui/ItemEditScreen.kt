@@ -4,7 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Base64
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -105,6 +107,7 @@ import androidx.compose.ui.unit.sp
 import com.yaoahos.safepassword.android.security.ClipboardHelper
 import com.yaoahos.safepassword.core.model.Field
 import com.yaoahos.safepassword.core.model.FieldType
+import com.yaoahos.safepassword.core.model.MAX_FIELD_FILE_BYTES
 import com.yaoahos.safepassword.core.model.TemplateCatalog
 import com.yaoahos.safepassword.core.model.VaultItem
 import com.yaoahos.safepassword.core.model.newId
@@ -635,7 +638,32 @@ private fun EditorFieldBox(
     var visible by remember(field.id) { mutableStateOf(false) }
     var edit by remember(field.id) { mutableStateOf(false) }
     val context = LocalContext.current
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            readSmallFile(context, uri)
+                .onSuccess { (bytes, name, mime) ->
+                    onChange(
+                        field.copy(
+                            value = Base64.encodeToString(bytes, Base64.NO_WRAP),
+                            fileName = name,
+                            fileMime = mime
+                        )
+                    )
+                }
+                .onFailure { error ->
+                    Toast.makeText(context, error.message ?: "无法读取文件", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
     Row(verticalAlignment = Alignment.CenterVertically) {
+        if (field.type == FieldType.FILE) {
+            FileFieldBox(
+                field = field,
+                onPick = { filePicker.launch(arrayOf("*/*")) },
+                onClear = { onChange(field.copy(value = "", fileName = "", fileMime = "")) },
+                modifier = Modifier.weight(1f)
+            )
+        } else {
         OutlinedTextField(
             value = field.value,
             onValueChange = { onChange(field.copy(value = it)) },
@@ -673,6 +701,7 @@ private fun EditorFieldBox(
                 null
             }
         )
+        }
         Column(
             modifier = Modifier.width(40.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -719,7 +748,7 @@ private fun EditorFieldBox(
                         }
                     )
                     HorizontalDivider()
-                    if (field.value.isNotBlank()) {
+                    if (field.value.isNotBlank() && field.type != FieldType.FILE) {
                         DropdownMenuItem(
                             text = { Text("复制") },
                             leadingIcon = { Icon(Icons.Outlined.ContentCopy, contentDescription = null) },
@@ -764,7 +793,11 @@ private fun EditorFieldBox(
                     field.copy(
                         label = label,
                         type = type,
-                        sensitive = type.masked
+                        sensitive = type.masked,
+                        // 从「文件」改成其它类型时丢掉文件内容与元数据，避免 base64 裸露成普通文本。
+                        value = if (type == FieldType.FILE) field.value else if (field.type == FieldType.FILE) "" else field.value,
+                        fileName = if (type == FieldType.FILE) field.fileName else "",
+                        fileMime = if (type == FieldType.FILE) field.fileMime else ""
                     )
                 )
                 edit = false
@@ -780,6 +813,7 @@ private fun fieldTypeIcon(type: FieldType): ImageVector = when (type) {
     FieldType.EMAIL -> Icons.Outlined.Email
     FieldType.PHONE -> Icons.Outlined.Phone
     FieldType.MULTILINE -> Icons.Outlined.Notes
+    FieldType.FILE -> Icons.Outlined.AttachFile
     else -> Icons.Outlined.Person
 }
 
@@ -840,6 +874,85 @@ private fun FieldEditor(
     )
 }
 
+/** 文件字段的选择框：未选时点按选文件，已选时显示文件名与大小。 */
+@Composable
+private fun FileFieldBox(
+    field: Field,
+    onPick: () -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val bytes = remember(field.value) { field.fileBytes() }
+    Row(
+        modifier = modifier
+            .height(64.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, Color.Black, RoundedCornerShape(12.dp))
+            .clickable(onClick = onPick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Outlined.AttachFile,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                if (bytes == null) "选择文件" else field.fileName.ifBlank { "文件" },
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                if (bytes == null) "单个文件，不超过 50KB"
+                else "${formatFileSize(bytes.size)} · 点按更换",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (bytes != null) {
+            IconButton(onClick = onClear, modifier = Modifier.size(30.dp)) {
+                Icon(
+                    Icons.Outlined.Close,
+                    contentDescription = "清除文件",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun formatFileSize(size: Int): String = when {
+    size < 1024 -> "$size B"
+    size < 1024 * 1024 -> "%.1f KB".format(size / 1024.0)
+    else -> "%.1f MB".format(size / (1024.0 * 1024.0))
+}
+
+/** 读取并限制 ≤50KB 的单个文件：返回 原始字节、显示名、MIME。 */
+private fun readSmallFile(context: Context, uri: Uri): Result<Triple<ByteArray, String, String>> =
+    runCatching {
+        val resolver = context.contentResolver
+        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: throw IllegalArgumentException("无法读取文件")
+        if (bytes.size > MAX_FIELD_FILE_BYTES) {
+            throw IllegalArgumentException("文件 ${formatFileSize(bytes.size)} 超过 50KB，无法存入字段")
+        }
+        var name = "文件"
+        resolver.query(uri, null, null, null, null)?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) {
+                name = cursor.getString(index)?.ifBlank { name } ?: name
+            }
+        }
+        val mime = resolver.getType(uri) ?: "application/octet-stream"
+        Triple(bytes, name, mime)
+    }
+
 @Composable
 private fun FieldDialog(
     initialLabel: String,
@@ -851,49 +964,119 @@ private fun FieldDialog(
 ) {
     var label by remember { mutableStateOf(initialLabel) }
     var type by remember { mutableStateOf(initialType) }
-    var menu by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
+        title = { Text(title, fontWeight = FontWeight.Bold) },
         text = {
-            Column {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 430.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 OutlinedTextField(
                     value = label,
                     onValueChange = { label = it },
                     label = { Text("字段名") },
                     singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
                     colors = safeFieldColors(),
                     modifier = Modifier.fillMaxWidth()
                 )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "字段类型",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(Modifier.height(8.dp))
-                Box {
-                    OutlinedButton(onClick = { menu = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text("类型：${typeLabel(type)}")
-                    }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        listOf(
-                            FieldType.TEXT, FieldType.PASSWORD, FieldType.SECRET, FieldType.URL,
-                            FieldType.EMAIL, FieldType.PHONE, FieldType.MULTILINE
-                        ).forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(typeLabel(option)) },
-                                onClick = {
-                                    type = option
-                                    menu = false
-                                }
+                listOf(
+                    FieldType.TEXT, FieldType.PASSWORD,
+                    FieldType.SECRET, FieldType.URL,
+                    FieldType.EMAIL, FieldType.PHONE,
+                    FieldType.MULTILINE, FieldType.FILE
+                ).chunked(2).forEach { rowTypes ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowTypes.forEach { option ->
+                            TypeChoiceCard(
+                                type = option,
+                                selected = type == option,
+                                onClick = { type = option },
+                                modifier = Modifier.weight(1f)
                             )
                         }
+                        if (rowTypes.size == 1) Spacer(Modifier.weight(1f))
                     }
+                    Spacer(Modifier.height(8.dp))
+                }
+                if (type == FieldType.FILE) {
+                    Text(
+                        "文件内容会加密存进密码库，单个文件不超过 50KB。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(label.trim().ifBlank { "自定义字段" }, type) }) {
+            Button(
+                onClick = { onConfirm(label.trim().ifBlank { "自定义字段" }, type) },
+                shape = RoundedCornerShape(50)
+            ) {
                 Text(confirmText)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
     )
+}
+
+/** 类型选择卡片：图标 + 名称，选中时主色描边，与图标选择控件同一套视觉语言。 */
+@Composable
+private fun TypeChoiceCard(
+    type: FieldType,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .height(52.dp)
+            .clip(RoundedCornerShape(13.dp))
+            .background(
+                if (selected) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+            )
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                shape = RoundedCornerShape(13.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            fieldTypeIcon(type),
+            contentDescription = null,
+            tint = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(19.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            typeLabel(type),
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 private fun typeLabel(type: FieldType): String = when (type) {
@@ -904,6 +1087,7 @@ private fun typeLabel(type: FieldType): String = when (type) {
     FieldType.EMAIL -> "邮箱"
     FieldType.PHONE -> "电话"
     FieldType.MULTILINE -> "多行文本"
+    FieldType.FILE -> "文件"
 }
 
 @Composable

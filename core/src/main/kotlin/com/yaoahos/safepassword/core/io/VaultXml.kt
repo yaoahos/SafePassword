@@ -131,7 +131,13 @@ object VaultXml {
         }
         item.fields.forEach { field ->
             if (field.label.equals("备注", ignoreCase = true)) return@forEach
-            appendField(document, card, field.label.ifBlank { "自定义字段" }, exportType(field), field.value)
+            // 文件字段只导出文件名占位，不把 base64 内容写进 XML，保持原版格式兼容。
+            val exportedValue = if (field.type == FieldType.FILE) {
+                field.fileName.ifBlank { "[文件]" }
+            } else {
+                field.value
+            }
+            appendField(document, card, field.label.ifBlank { "自定义字段" }, exportType(field), exportedValue)
         }
         if (item.url.isNotBlank() && !hasUrlField) {
             appendField(document, card, "website", "url", item.url)
@@ -169,6 +175,8 @@ object VaultXml {
     private fun exportType(field: Field): String {
         val label = field.label.lowercase()
         return when {
+            // 文件字段：XML 只写文件名占位、按 text 导出，保持原版格式兼容。
+            field.type == FieldType.FILE -> "text"
             // 类型优先于名称猜测：SECRET 绝不能因为标签里带「密码」就被导出成 password。
             field.type == FieldType.SECRET -> "secret"
             label.contains("密码") -> "password"

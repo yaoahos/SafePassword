@@ -1,11 +1,15 @@
 package com.yaoahos.safepassword.core.model
 
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
 fun newId(): String = UUID.randomUUID().toString()
 
 fun now(): Long = System.currentTimeMillis()
+
+/** 文件字段允许存储的最大原始字节数（50KB）。 */
+const val MAX_FIELD_FILE_BYTES = 50 * 1024
 
 @Serializable
 enum class ItemStatus {
@@ -23,7 +27,9 @@ enum class FieldType {
     URL,
     EMAIL,
     PHONE,
-    MULTILINE
+    MULTILINE,
+    /** 文件：单个 ≤50KB 小文件，value 存 base64，fileName / fileMime 存元数据。 */
+    FILE
 }
 
 /** 密码/秘密字段被改掉后留下的旧值。 */
@@ -31,6 +37,19 @@ enum class FieldType {
 data class FieldHistory(
     var value: String,
     var changedAt: Long = now()
+)
+
+/**
+ * 条目级附件引用。应用本身不提供附件管理界面，
+ * 该结构只为与桌面端 `sp/model.rs` 的明文 JSON 逐字节一致而保留。
+ */
+@Serializable
+data class AttachmentRef(
+    val id: String = newId(),
+    var name: String = "",
+    var mime: String = "application/octet-stream",
+    var size: Long = 0,
+    var addedAt: Long = now()
 )
 
 @Serializable
@@ -41,8 +60,21 @@ data class Field(
     var type: FieldType = FieldType.TEXT,
     var sensitive: Boolean = type == FieldType.PASSWORD || type == FieldType.SECRET,
     /** 历史值，最新的在前；只对 PASSWORD / SECRET 记录。 */
-    var history: MutableList<FieldHistory> = mutableListOf()
-)
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    var history: MutableList<FieldHistory> = mutableListOf(),
+    /** FILE 字段的文件名；空值不写进 JSON，与桌面端 skip_serializing_if 一致。 */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    var fileName: String = "",
+    /** FILE 字段的 MIME 类型；空值不写进 JSON。 */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    var fileMime: String = ""
+) {
+    /** FILE 字段的原始字节（base64 解码）；非 FILE 或无内容时为 null。 */
+    fun fileBytes(): ByteArray? {
+        if (type != FieldType.FILE || value.isBlank()) return null
+        return runCatching { java.util.Base64.getDecoder().decode(value) }.getOrNull()
+    }
+}
 
 @Serializable
 data class Label(
@@ -73,6 +105,8 @@ data class VaultItem(
     var createdAt: Long = now(),
     var updatedAt: Long = now(),
     var deletedAt: Long? = null,
+    /** 条目级附件引用（仅数据兼容，界面不提供附件管理）；始终写出以对齐桌面端。 */
+    var attachments: MutableList<AttachmentRef> = mutableListOf(),
     /** Preset icon id: letter / key / card / chat / work / custom. Empty = template default. */
     var iconKey: String = "",
     /** Base64 encoded square PNG used when [iconKey] == "custom". */
@@ -156,7 +190,11 @@ data class Vault(
     var lastSyncedAt: Long = 0,
     var deviceId: String = newId(),
     var contentKey: String = "",
-    /** 云端文件名用的稳定键：与库名解耦，改名不会换云端文件。空表示尚未分配。 */
+    /**
+     * 云端文件名用的稳定键：与库名解耦，改名不会换云端文件。空表示尚未分配。
+     * 空值不写进 JSON，与桌面端 `skip_serializing_if` 保持字节一致。
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
     var cloudKey: String = "",
     var tombstones: MutableList<Tombstone> = mutableListOf()
 ) {
