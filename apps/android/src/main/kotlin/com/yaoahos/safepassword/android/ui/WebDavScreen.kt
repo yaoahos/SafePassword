@@ -53,6 +53,7 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
     var baseUrl by remember { mutableStateOf(state.webDav.baseUrl) }
     var username by remember { mutableStateOf(state.webDav.username) }
     var password by remember { mutableStateOf(state.webDav.password) }
+    var passwordVisible by remember { mutableStateOf(false) }
     var remoteDir by remember { mutableStateOf(state.webDav.remoteDir) }
     var autoSync by remember { mutableStateOf(state.settings.autoSync) }
     var pullIntervalSeconds by remember { mutableStateOf(state.settings.pullIntervalSeconds) }
@@ -148,7 +149,9 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
             PasswordField(
                 value = password,
                 onValueChange = { password = it },
-                label = "密码 / 应用密码"
+                label = "密码 / 应用密码",
+                visible = passwordVisible,
+                onToggleVisibility = { passwordVisible = !passwordVisible }
             )
             OutlinedTextField(
                 value = remoteDir,
