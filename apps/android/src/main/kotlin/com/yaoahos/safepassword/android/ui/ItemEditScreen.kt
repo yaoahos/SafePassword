@@ -53,6 +53,7 @@ import androidx.compose.material.icons.outlined.Notes
 import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Upload
@@ -91,6 +92,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -221,8 +223,9 @@ fun ItemEditScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp)
+                                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp)
         ) {
             Row(verticalAlignment = Alignment.Top) {
                 OutlinedTextField(
@@ -809,6 +812,7 @@ private fun EditorFieldBox(
 private fun fieldTypeIcon(type: FieldType): ImageVector = when (type) {
     FieldType.PASSWORD -> Icons.Outlined.VpnKey
     FieldType.SECRET -> Icons.Outlined.Lock
+    FieldType.TOTP -> Icons.Outlined.Schedule
     FieldType.URL -> Icons.Outlined.Link
     FieldType.EMAIL -> Icons.Outlined.Email
     FieldType.PHONE -> Icons.Outlined.Phone
@@ -817,9 +821,9 @@ private fun fieldTypeIcon(type: FieldType): ImageVector = when (type) {
     else -> Icons.Outlined.Person
 }
 
-/** 需要遮挡显示的字段类型：密码与秘密。 */
+/** 需要遮挡显示的字段类型：密码、秘密与 TOTP 密钥。 */
 private val FieldType.masked: Boolean
-    get() = this == FieldType.PASSWORD || this == FieldType.SECRET
+    get() = this == FieldType.PASSWORD || this == FieldType.SECRET || this == FieldType.TOTP
 
 @Composable
 private fun FieldEditor(
@@ -972,8 +976,9 @@ private fun FieldDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 430.dp)
+                    .imePadding()
                     .verticalScroll(rememberScrollState())
-            ) {
+                                ) {
                 OutlinedTextField(
                     value = label,
                     onValueChange = { label = it },
@@ -992,9 +997,9 @@ private fun FieldDialog(
                 Spacer(Modifier.height(8.dp))
                 listOf(
                     FieldType.TEXT, FieldType.PASSWORD,
-                    FieldType.SECRET, FieldType.URL,
-                    FieldType.EMAIL, FieldType.PHONE,
-                    FieldType.MULTILINE, FieldType.FILE
+                    FieldType.SECRET, FieldType.TOTP,
+                    FieldType.URL, FieldType.EMAIL,
+                    FieldType.PHONE, FieldType.MULTILINE, FieldType.FILE
                 ).chunked(2).forEach { rowTypes ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1015,6 +1020,14 @@ private fun FieldDialog(
                 if (type == FieldType.FILE) {
                     Text(
                         "文件内容会加密存进密码库，单个文件不超过 50KB。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (type == FieldType.TOTP) {
+                    Text(
+                        "把网站给出的 otpauth:// 链接或 Base32 密钥（密钥文件码）填进字段值，" +
+                            "详情页会实时生成 6 位动态码，用于 GitHub 等双因素登录。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1083,6 +1096,7 @@ private fun typeLabel(type: FieldType): String = when (type) {
     FieldType.TEXT -> "文本"
     FieldType.PASSWORD -> "密码"
     FieldType.SECRET -> "秘密"
+    FieldType.TOTP -> "动态验证码"
     FieldType.URL -> "网址"
     FieldType.EMAIL -> "邮箱"
     FieldType.PHONE -> "电话"

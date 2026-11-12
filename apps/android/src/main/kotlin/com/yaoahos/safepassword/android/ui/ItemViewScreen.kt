@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Sell
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
@@ -62,10 +63,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.yaoahos.safepassword.core.security.Totp
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -390,7 +394,16 @@ fun ItemViewScreen(viewModel: AppViewModel, state: AppUiState, itemId: String) {
                 }
                 FieldRow(
                     field = field,
-                    onCopy = { copyValue(field.value) },
+                    onCopy = {
+                        if (field.type == FieldType.TOTP) {
+                            // TOTP 一键复制的是当前动态码，不是密钥本身。
+                            val code = Totp.currentCode(field.value)
+                            if (code != null) copyValue(code)
+                            else viewModel.showError("密钥无效，无法生成动态码")
+                        } else {
+                            copyValue(field.value)
+                        }
+                    },
                     onOpenUrl = { openUrlValue(it) },
                     onOpenHistory = if (field.history.isNotEmpty()) {
                         { historyFieldId = field.id }
@@ -504,12 +517,38 @@ private fun FieldRow(
 ) {
     val isPassword = field.type == FieldType.PASSWORD
     val isSecret = field.type == FieldType.SECRET
-    val masked = isPassword || isSecret
+    val isTotp = field.type == FieldType.TOTP
+    val masked = isPassword || isSecret || isTotp
     val isUrl = field.type == FieldType.URL
     val isFile = field.type == FieldType.FILE
     val value = field.value
     var revealed by remember(field.id) { mutableStateOf(false) }
-    var showFilePreview by remember(field.id) { mutableStateOf(false) }
+    // TOTP：每秒刷新一次动态码与倒计时。
+    var tick by remember(field.id) { mutableStateOf(System.currentTimeMillis()) }
+    if (isTotp) {
+        LaunchedEffect(field.id) {
+            while (true) {
+                tick = System.currentTimeMillis()
+                delay(1000L)
+            }
+        }
+    }
+    val totpParams = remember(isTotp, value) { if (isTotp) Totp.parse(value) else null }
+    val totpCode = remember(totpParams, tick) {
+        if (totpParams != null) {
+            Totp.generate(
+                totpParams.secret,
+                tick / 1000L / totpParams.period,
+                totpParams.digits,
+                totpParams.algorithm
+            )
+        } else {
+            null
+        }
+    }
+    val totpRemain = remember(totpParams, tick) {
+        if (totpParams != null) Totp.remainingSeconds(tick, totpParams.period) else 0
+    }
     val context = LocalContext.current
     val fileBytes = remember(field.value, field.id) { field.fileBytes() }
     val exportFile = rememberLauncherForActivityResult(
@@ -531,13 +570,18 @@ private fun FieldRow(
             else "$name · ${formatFileBytes(fileBytes.size)}"
         }
         value.isBlank() -> "—"
+        // TOTP 未揭示时显示当前动态码（6 位中间加空格），揭示后显示密钥原文。
+        isTotp && !revealed -> {
+            val code = totpCode ?: "密钥无效"
+            if (code.length == 6) code.substring(0, 3) + " " + code.substring(3) else code
+        }
         masked && !revealed -> "•".repeat(value.length.coerceIn(8, 16))
         else -> value
     }
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { if (isFile) showFilePreview = true else onCopy() }
+            .clickable { if (!isFile) onCopy() }
             .padding(top = 8.dp, bottom = 7.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -579,14 +623,6 @@ private fun FieldRow(
             }
             if (isFile) {
                 if (fileBytes != null) {
-                    IconButton(onClick = { showFilePreview = true }, modifier = Modifier.size(26.dp)) {
-                        Icon(
-                            Icons.Outlined.Visibility,
-                            contentDescription = "预览",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
                     IconButton(
                         onClick = { exportFile.launch(field.fileName.ifBlank { "文件" }) },
                         modifier = Modifier.size(26.dp)
@@ -620,6 +656,25 @@ private fun FieldRow(
             color = if (value.isBlank() && !isFile) MaterialTheme.colorScheme.onSurfaceVariant
             else MaterialTheme.colorScheme.onSurface
         )
+        if (isTotp && totpCode != null && !revealed) {
+            Row(
+                modifier = Modifier.padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Outlined.Schedule,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(12.dp)
+                )
+                Spacer(Modifier.width(3.dp))
+                Text(
+                    "$totpRemain 秒后更新",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         if (isPassword && value.isNotBlank()) {
             val strength = remember(value) { PasswordStrength.evaluate(value) }
             val strong = strength.score >= 3
@@ -653,36 +708,6 @@ private fun FieldRow(
                 )
             }
         }
-    }
-
-    if (showFilePreview) {
-        val previewText = remember(fileBytes, field.fileMime) {
-            val bytes = fileBytes ?: return@remember "文件内容为空"
-            val textLike = field.fileMime.startsWith("text/") ||
-                field.fileMime.contains("json") || field.fileMime.contains("xml") ||
-                field.fileMime.contains("csv") || field.fileMime.isBlank()
-            if (textLike) {
-                String(bytes, Charsets.UTF_8).take(4000)
-            } else {
-                "「${field.fileMime.ifBlank { "application/octet-stream" }}」是二进制内容（${formatFileBytes(bytes.size)}），不支持文本预览，可点导出保存到本地。"
-            }
-        }
-        AlertDialog(
-            onDismissRequest = { showFilePreview = false },
-            title = { Text(field.fileName.ifBlank { "文件" }, fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    previewText,
-                    fontSize = 13.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 320.dp)
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showFilePreview = false }) { Text("关闭") }
-            }
-        )
     }
 }
 

@@ -41,11 +41,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yaoahos.safepassword.core.sync.WebDavConfig
 import kotlinx.coroutines.delay
+
+/** 服务器地址留空时的默认填充（坚果云）；用户可自行改成 NAS 等其它地址。 */
+private const val DEFAULT_WEBDAV_SERVER = "https://dav.jianguoyun.com/dav/"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -79,12 +83,17 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
     }
 
     fun currentConfig() = WebDavConfig(
-        baseUrl = baseUrl.trim(),
+        baseUrl = baseUrl.trim().ifBlank { DEFAULT_WEBDAV_SERVER },
         username = username.trim(),
         password = password,
         remoteDir = remoteDir.trim().ifBlank { "SafePassword" },
         enabled = true
     )
+
+    // 服务器地址留空保存时自动填默认（坚果云）地址，并回显到输入框，用户可再改。
+    fun ensureServerAddress() {
+        if (baseUrl.isBlank()) baseUrl = DEFAULT_WEBDAV_SERVER
+    }
 
     Scaffold(
         topBar = {
@@ -103,8 +112,9 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             SectionCard {
@@ -249,6 +259,7 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
             if (restore) {
                 Button(
                     onClick = {
+                        ensureServerAddress()
                         if (!currentConfig().isConfigured()) {
                             viewModel.showError("请填写以 http:// 或 https:// 开头的服务器地址")
                         } else {
@@ -256,7 +267,7 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
                             viewModel.loadCloudVaults(currentConfig())
                         }
                     },
-                    enabled = !state.busy && baseUrl.isNotBlank() && !state.cloudVaultsLoading,
+                    enabled = !state.busy && !state.cloudVaultsLoading,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Outlined.Cloud, contentDescription = null)
@@ -309,10 +320,11 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
             } else {
                 OutlinedButton(
                     onClick = {
+                        ensureServerAddress()
                         viewModel.setWebDav(currentConfig())
                         viewModel.syncNow()
                     },
-                    enabled = !state.busy && baseUrl.isNotBlank(),
+                    enabled = !state.busy,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Outlined.Sync, contentDescription = null)
@@ -321,13 +333,14 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
                 }
                 OutlinedButton(
                     onClick = {
+                        ensureServerAddress()
                         if (!currentConfig().isConfigured()) {
                             viewModel.showError("请填写以 http:// 或 https:// 开头的服务器地址")
                         } else {
                             showPullConfirm = true
                         }
                     },
-                    enabled = !state.busy && baseUrl.isNotBlank(),
+                    enabled = !state.busy,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Outlined.Cloud, contentDescription = null)
@@ -383,7 +396,7 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
             onDismissRequest = { showMasterPrompt = false },
             title = { Text("输入主密码") },
             text = {
-                Column {
+                Column(Modifier.imePadding()) {
                     Text(
                         if (entry != null) "将恢复「${entry.name}」：输入该密码库的主密码，解密后保存到本地。"
                         else "将从云端下载密码库并用这个主密码解密，恢复为本地密码库。",
@@ -402,11 +415,10 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
                         onToggleVisibility = { masterVisible = !masterVisible }
                     )
                     if (masterError) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "请输入至少 8 位的主密码",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
+                        Spacer(Modifier.height(6.dp))
+                        InlineNotice(
+                            text = "请输入至少 8 位的主密码",
+                            accent = MaterialTheme.colorScheme.error
                         )
                     }
                 }

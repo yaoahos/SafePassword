@@ -28,7 +28,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.CreditCard
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Delete
@@ -43,6 +46,7 @@ import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.VpnKey
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material.icons.outlined.WorkOutline
 import androidx.compose.material3.AlertDialog
@@ -71,8 +75,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
@@ -255,6 +262,98 @@ fun EmptyState(icon: ImageVector, title: String, subtitle: String) {
     }
 }
 
+/** 顶部提示条的四种状态：成功 / 错误 / 警告 / 信息。底色浅、文字用同系深色。 */
+enum class NoticeStyle(val bg: Color, val fg: Color) {
+    SUCCESS(Color(0xFFDDF7E5), Color(0xFF1D9A57)),
+    ERROR(Color(0xFFFCE9E9), Color(0xFFD3455B)),
+    WARNING(Color(0xFFFFE8D6), Color(0xFFC77700)),
+    INFO(Color(0xFFE3F0FB), Color(0xFF2563EB))
+}
+
+/**
+ * 顶部彩色提示条：圆角卡片、限宽居中、自动消失、点一下即关。
+ * 成功/警告/信息 2.5 秒后消失，错误留 5 秒；替代旧的底部黑底 snackbar。
+ */
+@Composable
+fun TopNotice(
+    message: String,
+    style: NoticeStyle,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LaunchedEffect(message, style) {
+        delay(if (style == NoticeStyle.ERROR) 5000L else 2500L)
+        onDismiss()
+    }
+    Surface(
+        modifier = modifier
+            .widthIn(max = 420.dp)
+            .fillMaxWidth()
+            .clickable(onClick = onDismiss),
+        shape = RoundedCornerShape(12.dp),
+        color = style.bg,
+        shadowElevation = 4.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = when (style) {
+                    NoticeStyle.SUCCESS -> Icons.Outlined.CheckCircle
+                    NoticeStyle.ERROR -> Icons.Outlined.ErrorOutline
+                    NoticeStyle.WARNING -> Icons.Outlined.WarningAmber
+                    NoticeStyle.INFO -> Icons.Outlined.Info
+                },
+                contentDescription = null,
+                tint = style.fg,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                message,
+                color = style.fg,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+/**
+ * 弹窗内联提示条：淡色底 + 状态色图标 + 小字，用于弹窗里的错误/警告行内提示
+ * （替代单独一行红字）。
+ */
+@Composable
+fun InlineNotice(
+    text: String,
+    accent: Color,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(accent.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Outlined.ErrorOutline,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(15.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text,
+            fontSize = 12.sp,
+            color = accent,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
 @Composable
 fun ConfirmDialog(
     title: String,
@@ -296,14 +395,16 @@ fun TextInputDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            OutlinedTextField(
-                value = value,
-                onValueChange = { value = it },
-                label = { Text(label) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                colors = safeFieldColors()
-            )
+            Column(Modifier.imePadding()) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    label = { Text(label) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = safeFieldColors()
+                )
+            }
         },
         confirmButton = {
             TextButton(

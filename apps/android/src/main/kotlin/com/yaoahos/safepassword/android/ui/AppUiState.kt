@@ -110,7 +110,8 @@ fun visibleItems(state: AppUiState): List<VaultItem> {
                     // 文件字段的 value 是 base64，搜索它没有意义，也别把内容泄漏进搜索结果。
                     field.type != FieldType.FILE &&
                         (state.settings.searchPasswords ||
-                            (field.type != FieldType.PASSWORD && field.type != FieldType.SECRET)) &&
+                            (field.type != FieldType.PASSWORD && field.type != FieldType.SECRET &&
+                                field.type != FieldType.TOTP)) &&
                         field.value.lowercase().contains(query)
                 }
         }

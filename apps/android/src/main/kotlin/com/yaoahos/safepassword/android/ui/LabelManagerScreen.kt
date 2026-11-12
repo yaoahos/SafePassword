@@ -59,6 +59,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -417,8 +418,9 @@ internal fun LabelEditDialog(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding)
+                        .imePadding()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                                                .padding(horizontal = 20.dp, vertical = 8.dp)
                 ) {
                     OutlinedTextField(
                         value = name,
@@ -511,7 +513,7 @@ private fun LabelColorPickerDialog(
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 2.dp
         ) {
-            Column(modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 10.dp)) {
+            Column(modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 10.dp).imePadding()) {
                 Text("选择颜色", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
                 Spacer(Modifier.height(18.dp))
                 LazyVerticalGrid(
