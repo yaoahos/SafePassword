@@ -22,8 +22,8 @@ android {
         applicationId = "com.yaoahos.safepassword"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 5
+        versionName = "1.0.4"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -50,7 +50,13 @@ android {
     }
 
     signingConfigs {
-        // debug 用 AGP 自动生成的 ~/.android/debug.keystore，不把任何密钥文件放进仓库。
+        // debug 统一用项目根目录的 debug.keystore（标准 androiddebugkey / 口令 android）。
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         create("release") {
             if (keystorePropertiesFile.exists()) {
                 storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
