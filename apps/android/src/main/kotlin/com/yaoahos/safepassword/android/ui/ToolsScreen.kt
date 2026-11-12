@@ -74,19 +74,14 @@ data class ToolEntry(
     val onClick: () -> Unit
 )
 
+/** 工具标签页的内容区。顶栏/底栏/侧边栏由 [MainTabShell] 持有。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ToolsScreen(viewModel: AppViewModel, state: AppUiState) {
+fun ToolsContent(viewModel: AppViewModel, state: AppUiState) {
     val context = LocalContext.current
     var showGenerator by remember { mutableStateOf(false) }
     val importPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) viewModel.importFiles(uris)
-    }
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
-
-    BackHandler(enabled = drawerState.isOpen) {
-        scope.launch { drawerState.close() }
     }
 
     val tools = listOf(
@@ -108,69 +103,10 @@ fun ToolsScreen(viewModel: AppViewModel, state: AppUiState) {
         }
     )
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            SafeSidebar(
-                vaultName = state.activeMeta?.name ?: "我的密码库",
-                itemCount = state.activeVault?.activeItems()?.size ?: 0,
-                screen = Screen.Tools,
-                favoritesOnly = state.onlyFavorites,
-                trashSelected = false,
-                onClose = { scope.launch { drawerState.close() } },
-                onAllItems = {
-                    scope.launch { drawerState.close() }
-                    viewModel.setOnlyFavorites(false)
-                    viewModel.setFilterLabel(null)
-                    viewModel.navigate(Screen.Vault)
-                },
-                onFavorites = {
-                    scope.launch { drawerState.close() }
-                    viewModel.setOnlyFavorites(true)
-                    viewModel.setFilterLabel(null)
-                    viewModel.navigate(Screen.Vault)
-                },
-                onTrash = {
-                    scope.launch { drawerState.close() }
-                    viewModel.navigate(Screen.Trash)
-                },
-                onLabels = {
-                    scope.launch { drawerState.close() }
-                    viewModel.navigate(Screen.LabelManager())
-                },
-                onSettings = {
-                    scope.launch { drawerState.close() }
-                    viewModel.navigate(Screen.Settings)
-                },
-                onLock = {
-                    scope.launch { drawerState.close() }
-                    viewModel.lock()
-                },
-                onAppNameClick = {
-                    scope.launch { drawerState.close() }
-                    viewModel.checkForUpdates()
-                }
-            )
-        }
-    ) {
-    Scaffold(
-        contentWindowInsets = WindowInsets(0),
-        topBar = {
-            SafeCompactTopBar(
-                title = "工具",
-                onMenu = { scope.launch { drawerState.open() } },
-                onLock = viewModel::lock
-            )
-        },
-        bottomBar = {
-            SafeBottomBar(selected = Screen.Tools, onNavigate = viewModel::navigate)
-        }
-    ) { padding ->
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(if (LocalWideLayout.current) 4 else 2),
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(if (LocalWideLayout.current) 4 else 2),
+        modifier = Modifier
+            .fillMaxSize(),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -193,8 +129,6 @@ fun ToolsScreen(viewModel: AppViewModel, state: AppUiState) {
                 ToolCard(tool)
             }
         }
-    }
-    }
 
     if (showGenerator) {
         GeneratorDialog(

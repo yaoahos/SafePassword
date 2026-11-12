@@ -161,65 +161,96 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                             if (!state.initialized) {
                                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                             } else {
+                                // 锁定界面与应用层整体做淡入淡出；解锁后的结构是：
+                                // 常驻 tab 壳层（顶栏/底栏固定）+ 随层级滑入滑出的下层页面覆盖层。
                                 AnimatedContent(
-                                    targetState = state.screen,
+                                    targetState = state.screen == Screen.Unlock,
                                     transitionSpec = {
-                                        // 参考主流密码管理器的层级切换：
-                                        // 标签页之间只做淡入淡出，进入下一层从右侧滑入，返回上一层反向滑出。
-                                        val tabChange = initialState.isTabScreen() && targetState.isTabScreen()
-                                        val transform = when {
-                                            tabChange -> (
-                                                fadeIn(tween(240, easing = FastOutSlowInEasing)) +
-                                                    scaleIn(
-                                                        initialScale = 0.98f,
-                                                        animationSpec = tween(260, easing = FastOutSlowInEasing)
-                                                    )
-                                                ) togetherWith fadeOut(tween(160, easing = FastOutSlowInEasing))
-
-                                            state.navForward -> (
-                                                slideInHorizontally(
-                                                    animationSpec = tween(320, easing = FastOutSlowInEasing)
-                                                ) { it / 3 } +
-                                                    fadeIn(tween(240, delayMillis = 40))
-                                                ) togetherWith (
-                                                slideOutHorizontally(
-                                                    animationSpec = tween(320, easing = FastOutSlowInEasing)
-                                                ) { -it / 3 } +
-                                                    fadeOut(tween(150))
+                                        (
+                                            fadeIn(tween(240, easing = FastOutSlowInEasing)) +
+                                                scaleIn(
+                                                    initialScale = 0.98f,
+                                                    animationSpec = tween(260, easing = FastOutSlowInEasing)
                                                 )
-
-                                            else -> (
-                                                slideInHorizontally(
-                                                    animationSpec = tween(320, easing = FastOutSlowInEasing)
-                                                ) { -it / 3 } +
-                                                    fadeIn(tween(240, delayMillis = 40))
-                                                ) togetherWith (
-                                                slideOutHorizontally(
-                                                    animationSpec = tween(320, easing = FastOutSlowInEasing)
-                                                ) { it / 3 } +
-                                                    fadeOut(tween(150))
-                                                )
-                                        }
-                                        transform.using(SizeTransform(clip = false))
+                                            ) togetherWith fadeOut(tween(160, easing = FastOutSlowInEasing))
                                     },
-                                    label = "screen"
-                                ) { animated ->
-                                    screenStateHolder.SaveableStateProvider(animated.toString()) {
-                                        when (val screen = animated) {
-                                            Screen.Unlock -> UnlockScreen(viewModel, state, activity)
-                                            Screen.Vault -> VaultScreen(viewModel, state)
-                                            Screen.Tools -> ToolsScreen(viewModel, state)
-                                            Screen.Security -> SecurityScreen(viewModel, state)
-                                            Screen.Settings -> SettingsScreen(viewModel, state, activity)
-                                            is Screen.ViewItem -> ItemViewScreen(viewModel, state, screen.itemId)
-                                            is Screen.EditItem -> ItemEditScreen(viewModel, state, screen.itemId, screen.fromView)
-                                            is Screen.WebDav -> WebDavScreen(viewModel, state, screen.restore)
-                                            Screen.Backups -> BackupsScreen(viewModel, state)
-                                            Screen.VaultManager -> VaultManagerScreen(viewModel, state)
-                                            is Screen.LabelManager -> LabelManagerScreen(viewModel, state, screen.create)
-                                            Screen.Trash -> TrashScreen(viewModel, state)
-                                            Screen.Theme -> ThemeScreen(viewModel, state)
-                                            Screen.About -> AboutScreen(viewModel, state)
+                                    label = "lock-gate"
+                                ) { unlocking ->
+                                    if (unlocking) {
+                                        screenStateHolder.SaveableStateProvider("Unlock") {
+                                            UnlockScreen(viewModel, state, activity)
+                                        }
+                                    } else {
+                                        Box(Modifier.fillMaxSize()) {
+                                            MainTabShell(viewModel, state, screenStateHolder)
+                                            AnimatedContent(
+                                                targetState = state.screen
+                                                    .takeIf { it != Screen.Vault && it != Screen.Tools },
+                                                transitionSpec = {
+                                                    // 与旧版层级转场同构：
+                                                    // 进入下层从右侧滑入、返回 tab 层反向滑出，下层之间按前后方向滑动。
+                                                    val transform = when {
+                                                        initialState == null -> (
+                                                            slideInHorizontally(
+                                                                animationSpec = tween(320, easing = FastOutSlowInEasing)
+                                                            ) { if (state.navForward) it / 3 else -it / 3 } +
+                                                                fadeIn(tween(240, delayMillis = 40))
+                                                            ) togetherWith fadeOut(tween(150))
+
+                                                        targetState == null -> fadeIn(tween(240)) togetherWith (
+                                                            slideOutHorizontally(
+                                                                animationSpec = tween(320, easing = FastOutSlowInEasing)
+                                                            ) { it / 3 } +
+                                                                fadeOut(tween(150))
+                                                            )
+
+                                                        state.navForward -> (
+                                                            slideInHorizontally(
+                                                                animationSpec = tween(320, easing = FastOutSlowInEasing)
+                                                            ) { it / 3 } +
+                                                                fadeIn(tween(240, delayMillis = 40))
+                                                            ) togetherWith (
+                                                            slideOutHorizontally(
+                                                                animationSpec = tween(320, easing = FastOutSlowInEasing)
+                                                            ) { -it / 3 } +
+                                                                fadeOut(tween(150))
+                                                            )
+
+                                                        else -> (
+                                                            slideInHorizontally(
+                                                                animationSpec = tween(320, easing = FastOutSlowInEasing)
+                                                            ) { -it / 3 } +
+                                                                fadeIn(tween(240, delayMillis = 40))
+                                                            ) togetherWith (
+                                                            slideOutHorizontally(
+                                                                animationSpec = tween(320, easing = FastOutSlowInEasing)
+                                                            ) { it / 3 } +
+                                                                fadeOut(tween(150))
+                                                            )
+                                                    }
+                                                    transform.using(SizeTransform(clip = false))
+                                                },
+                                                label = "overlay"
+                                            ) { target ->
+                                                if (target != null) {
+                                                    screenStateHolder.SaveableStateProvider(target.toString()) {
+                                                        when (val screen = target) {
+                                                            Screen.Security -> SecurityScreen(viewModel, state)
+                                                            Screen.Settings -> SettingsScreen(viewModel, state, activity)
+                                                            is Screen.ViewItem -> ItemViewScreen(viewModel, state, screen.itemId)
+                                                            is Screen.EditItem -> ItemEditScreen(viewModel, state, screen.itemId, screen.fromView)
+                                                            is Screen.WebDav -> WebDavScreen(viewModel, state, screen.restore)
+                                                            Screen.Backups -> BackupsScreen(viewModel, state)
+                                                            Screen.VaultManager -> VaultManagerScreen(viewModel, state)
+                                                            is Screen.LabelManager -> LabelManagerScreen(viewModel, state, screen.create)
+                                                            Screen.Trash -> TrashScreen(viewModel, state)
+                                                            Screen.Theme -> ThemeScreen(viewModel, state)
+                                                            Screen.About -> AboutScreen(viewModel, state)
+                                                            else -> {}
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -445,6 +476,3 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
     }
 }
 
-/** 底部标签页级别的页面：之间切换只做淡入淡出，不做层级滑动。 */
-private fun Screen.isTabScreen(): Boolean =
-    this == Screen.Vault || this == Screen.Tools || this == Screen.Unlock
