@@ -2,6 +2,8 @@ package com.yaoahos.safepassword.android.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,6 +33,7 @@ import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Label
@@ -503,9 +506,30 @@ private fun FieldRow(
     val isSecret = field.type == FieldType.SECRET
     val masked = isPassword || isSecret
     val isUrl = field.type == FieldType.URL
+    val isFile = field.type == FieldType.FILE
     val value = field.value
     var revealed by remember(field.id) { mutableStateOf(false) }
+    var showFilePreview by remember(field.id) { mutableStateOf(false) }
+    val context = LocalContext.current
+    val fileBytes = remember(field.value, field.id) { field.fileBytes() }
+    val exportFile = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(field.fileMime.ifBlank { "application/octet-stream" })
+    ) { uri ->
+        val bytes = fileBytes
+        if (uri != null && bytes != null) {
+            runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+            }.onFailure {
+                android.widget.Toast.makeText(context, "导出失败：${it.message}", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     val display = when {
+        isFile -> {
+            val name = field.fileName.ifBlank { "文件" }
+            if (fileBytes == null) name
+            else "$name · ${formatFileBytes(fileBytes.size)}"
+        }
         value.isBlank() -> "—"
         masked && !revealed -> "•".repeat(value.length.coerceIn(8, 16))
         else -> value
@@ -513,7 +537,7 @@ private fun FieldRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCopy() }
+            .clickable { if (isFile) showFilePreview = true else onCopy() }
             .padding(top = 8.dp, bottom = 7.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -553,13 +577,37 @@ private fun FieldRow(
                     )
                 }
             }
-            IconButton(onClick = onCopy, modifier = Modifier.size(26.dp)) {
-                Icon(
-                    Icons.Outlined.ContentCopy,
-                    contentDescription = "复制",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(15.dp)
-                )
+            if (isFile) {
+                if (fileBytes != null) {
+                    IconButton(onClick = { showFilePreview = true }, modifier = Modifier.size(26.dp)) {
+                        Icon(
+                            Icons.Outlined.Visibility,
+                            contentDescription = "预览",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = { exportFile.launch(field.fileName.ifBlank { "文件" }) },
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            Icons.Outlined.Download,
+                            contentDescription = "导出",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            } else {
+                IconButton(onClick = onCopy, modifier = Modifier.size(26.dp)) {
+                    Icon(
+                        Icons.Outlined.ContentCopy,
+                        contentDescription = "复制",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
             }
         }
         Text(
@@ -569,7 +617,7 @@ private fun FieldRow(
             letterSpacing = if (masked && !revealed) 2.sp else 0.sp,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            color = if (value.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (value.isBlank() && !isFile) MaterialTheme.colorScheme.onSurfaceVariant
             else MaterialTheme.colorScheme.onSurface
         )
         if (isPassword && value.isNotBlank()) {
@@ -606,6 +654,42 @@ private fun FieldRow(
             }
         }
     }
+
+    if (showFilePreview) {
+        val previewText = remember(fileBytes, field.fileMime) {
+            val bytes = fileBytes ?: return@remember "文件内容为空"
+            val textLike = field.fileMime.startsWith("text/") ||
+                field.fileMime.contains("json") || field.fileMime.contains("xml") ||
+                field.fileMime.contains("csv") || field.fileMime.isBlank()
+            if (textLike) {
+                String(bytes, Charsets.UTF_8).take(4000)
+            } else {
+                "「${field.fileMime.ifBlank { "application/octet-stream" }}」是二进制内容（${formatFileBytes(bytes.size)}），不支持文本预览，可点导出保存到本地。"
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { showFilePreview = false },
+            title = { Text(field.fileName.ifBlank { "文件" }, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    previewText,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showFilePreview = false }) { Text("关闭") }
+            }
+        )
+    }
+}
+
+private fun formatFileBytes(size: Int): String = when {
+    size < 1024 -> "$size B"
+    size < 1024 * 1024 -> "%.1f KB".format(size / 1024.0)
+    else -> "%.1f MB".format(size / (1024.0 * 1024.0))
 }
 
 @Composable
