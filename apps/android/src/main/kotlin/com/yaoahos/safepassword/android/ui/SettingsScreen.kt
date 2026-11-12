@@ -43,6 +43,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,6 +78,10 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
     var pendingBackupDays by remember { mutableStateOf(0) }
     val context = LocalContext.current
     val fingerprintStatus = BiometricHelper.status(context)
+
+    // 进设置页时体检一次指纹：硬件损坏 / 录入被删就自动关掉指纹解锁，
+    // 否则会出现「指纹已经坏了却还要验证指纹才能关闭」的死锁。
+    LaunchedEffect(Unit) { viewModel.ensureFingerprintHealthy() }
 
     // 开启自动备份时先让用户选一个目录，备份不再写应用内部存储。
     val backupFolderPicker = rememberLauncherForActivityResult(
@@ -168,15 +173,20 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
                                     // 关闭指纹也要验证一次指纹，避免他人临时借用手机时直接关掉解锁门槛。
                                     val decryptCipher = viewModel.prepareBiometricUnlock()
                                     if (decryptCipher == null) {
-                                        viewModel.showError("指纹凭据已失效，请用主密码解锁后再关闭")
+                                        // 凭据已失效（指纹被重录等）：验证这一步已经走不通，直接关，不再卡死。
+                                        viewModel.disableFingerprint("指纹凭据已失效，已直接关闭指纹解锁")
                                     } else {
                                         BiometricHelper.authenticate(
                                             activity,
                                             decryptCipher,
                                             onSuccess = { viewModel.disableFingerprint() },
                                             onFailure = { code, message ->
-                                                if (!BiometricHelper.isUserCancelled(code)) {
-                                                    viewModel.showError(message)
+                                                when {
+                                                    BiometricHelper.isUserCancelled(code) -> Unit
+                                                    // 传感器损坏/无法处理/永久锁定：再验证也过不了，直接关。
+                                                    BiometricHelper.isHardwareError(code) ->
+                                                        viewModel.disableFingerprint("指纹识别不可用，已自动关闭指纹解锁")
+                                                    else -> viewModel.showError(message)
                                                 }
                                             }
                                         )
