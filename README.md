@@ -4,12 +4,12 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 - 项目名：`SafePassword`
 - 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.0.8`（versionCode 9）
+- 正式版本：`1.0.9`（versionCode 10）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`SafePassword-1.0.8-release.apk`
-- APK 大小：3,035,839 字节
-- SHA-256：`9429dd3b5fb37c4b1443b93453a5f4ac995ec65e67f138cc82aa9f14afa58249`
+- 正式 APK：`SafePassword-1.0.9-release.apk`
+- APK 大小：3,036,115 字节
+- SHA-256：`e51b00f0fc2927b2ddf7e31b3938ec3750f07b07acdb515d14463a4a31ece988`
 - 发布下载：[Releases](https://github.com/yaoahos/SafePassword/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
@@ -53,7 +53,7 @@ SafePassword 面向希望把密码数据掌握在自己手里的用户。它不�
 - 新建、编辑、查看、复制、删除；回收站支持软删除、恢复与永久删除。
 - 字段类型：文本、密码、秘密、网址、邮箱、电话、文件（单个 ≤50KB 小文件）、TOTP 动态验证码；支持增删、改名与上下移动。
 - 密码独立显示/隐藏，附强度提示；可收藏、打多标签、批量选择。
-- 支持自定义图片图标（压缩为 256×256 正方形，按需解码）。
+- 支持自定义图片图标：按 192×192 归一化（4:3 内居中裁切、超出等比留白），照片类超 48KB 自动降 128，按需解码。
 
 **搜索与排序**
 - 常驻搜索框，可搜标题、账号、网址，可选是否搜索密码内容。
@@ -223,21 +223,21 @@ apps/android/build/outputs/apk/release/android-release.apk
 重命名并复制到 `dist/`：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.8-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.9-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose dist\SafePassword-1.0.8-release.apk
-aapt.exe dump badging dist\SafePassword-1.0.8-release.apk
+apksigner.bat verify --verbose dist\SafePassword-1.0.9-release.apk
+aapt.exe dump badging dist\SafePassword-1.0.9-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.yaoahos.safepassword`
 - `versionCode: 7`
-- `versionName: 1.0.8`
+- `versionName: 1.0.9`
 - `application-label: SafePassword`
 - APK Signature Scheme v2：通过
 - 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`、`CAMERA`（仅扫码录入动态验证码时使用，可拒绝并从相册选图）
@@ -245,7 +245,7 @@ aapt.exe dump badging dist\SafePassword-1.0.8-release.apk
 ### 6. 测试
 
 - `:core:test` 覆盖加密、密码库容器、WebDAV 客户端、XML 导入导出、TOTP（RFC 6238 向量）、工具函数等。
-- 当前核心测试 59/59 通过（新增 7 条二维码解码用例）。
+- 当前核心测试 70/70 通过（新增 7 条二维码解码、11 条图标归一化用例）。
 
 ---
 
@@ -355,6 +355,12 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/11/13 · 1.0.9**
+- 优化 自定义图标统一存 192×192 PNG：4:3 以内居中裁切，横幅/竖图等比留白，不再要求先裁成正方形
+- 优化 编码后超 48KB 的照片类图标自动降到 128，logo 类不受影响
+- 修复 XML 导入的非正方形图标被强行拉成 128×128 导致变形
+- 新增 设置里的「压缩已有图标」临时入口，可一次性把老图标按新规格重编码
 
 **2026/11/13 · 1.0.8**
 - 修复 自动锁定不生效：解锁后停留在前台、超过设定时间也会锁定（以前只在切到后台计时）；计时改用开机时钟，改系统时间不影响判定
