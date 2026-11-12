@@ -1922,6 +1922,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     _state.update { it.copy(updateProgress = percent) }
                     UpdateNotifications.progress(app, percent)
                 }
+                // 下载完先自己核对包名与签名，别把不明来源的包交给系统安装器。
+                GitHubUpdater.verifyDownloadedApk(app, target)?.let { problem ->
+                    throw UpdateDownloadException(problem)
+                }
                 UpdateNotifications.completed(app, info, target.absolutePath)
                 _state.update {
                     it.copy(updateDownloading = false, updateProgress = 100, updateReadyFile = target.absolutePath)
@@ -2264,8 +2268,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private companion object {
-        /** 应用内最多展示 50 个版本的更新日志，更早的去 GitHub Releases 看。 */
-        const val MAX_CHANGELOG_VERSIONS = 50
+        /** 应用内最多展示 5 个版本的更新日志，更早的去 GitHub Releases 看。 */
+        const val MAX_CHANGELOG_VERSIONS = 5
 
         /** 单个密码/秘密字段最多保留的历史值条数。 */
         const val MAX_FIELD_HISTORY = 20

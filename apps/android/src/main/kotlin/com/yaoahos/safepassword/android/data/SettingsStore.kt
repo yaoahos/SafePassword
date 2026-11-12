@@ -43,41 +43,49 @@ data class AppSettings(
 )
 
 class SettingsStore(context: Context) {
+    private val appContext: Context = context.applicationContext
     private val prefs: SharedPreferences = createPrefs(context, "safepassword_settings", "safepassword_settings_key")
 
-    init {
+    /**
+     * 旧文件名的一次性搬迁。
+     *
+     * 以前放在 init 里，而 SettingsStore 是在 Application.onCreate 主线程构造的：
+     * 这一步要再建一次 MasterKey 并打开另一份 EncryptedSharedPreferences（两次
+     * Keystore 往返），冷启动时会把首帧推后，桌面看到的启动动画就「弹起又缩回」。
+     * 改成首次真正读设置时才做，且此时调用方（ViewModel 的 IO 协程）不在主线程。
+     */
+    private val legacyMigrated: Unit by lazy { migrateLegacyFile() }
+
+    private fun migrateLegacyFile() {
         // 1.4.x 的设置文件用的是改名前的旧文件名；这里只做一次性搬迁，避免用户重配 WebDAV。
-        if (!prefs.getBoolean(KEY_MIGRATED_FROM_LEGACY, false)) {
-            val legacy = runCatching {
-                val masterKey = MasterKey.Builder(context)
-                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                    .build()
-                EncryptedSharedPreferences.create(
-                    context,
-                    LEGACY_PREFS_NAME,
-                    masterKey,
-                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-                )
-            }.getOrNull()
-            if (legacy != null) {
-                val editor = prefs.edit()
-                legacy.all.forEach { (key, value) ->
-                    when (value) {
-                        is String -> editor.putString(key, value)
-                        is Boolean -> editor.putBoolean(key, value)
-                        is Int -> editor.putInt(key, value)
-                        is Long -> editor.putLong(key, value)
-                        is Float -> editor.putFloat(key, value)
-                        is Set<*> -> {
-                            @Suppress("UNCHECKED_CAST")
-                            editor.putStringSet(key, value as Set<String>)
-                        }
-                    }
+        if (prefs.getBoolean(KEY_MIGRATED_FROM_LEGACY, false)) return
+        val legacy = runCatching {
+            val masterKey = MasterKey.Builder(appContext)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                appContext,
+                LEGACY_PREFS_NAME,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        }.getOrNull() ?: return
+        val editor = prefs.edit()
+        legacy.all.forEach { (key, value) ->
+            when (value) {
+                is String -> editor.putString(key, value)
+                is Boolean -> editor.putBoolean(key, value)
+                is Int -> editor.putInt(key, value)
+                is Long -> editor.putLong(key, value)
+                is Float -> editor.putFloat(key, value)
+                is Set<*> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    editor.putStringSet(key, value as Set<String>)
                 }
-                editor.putBoolean(KEY_MIGRATED_FROM_LEGACY, true).apply()
             }
         }
+        editor.putBoolean(KEY_MIGRATED_FROM_LEGACY, true).apply()
     }
 
     /**
@@ -89,6 +97,7 @@ class SettingsStore(context: Context) {
 
     var settings: AppSettings
         get() {
+            legacyMigrated
             val stored = read(AppSettings.serializer(), KEY_SETTINGS) ?: return AppSettings()
             // 1.3.x 曾有“强制把允许截屏改回 true”的迁移，导致老用户被动继承可截屏状态。
             // 这里一次性改回默认的安全值（禁止截屏），需要的人可以自己再打开。

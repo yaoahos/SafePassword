@@ -1,3 +1,5 @@
 <resources>
     <color name="ic_launcher_background">#1E6FD9</color>
+    <!-- 启动窗口背景：与 Compose 主题的浅色 background 一致，避免冷启动先闪深色再变白。 -->
+    <color name="window_background">#F4F4F6</color>
 </resources>
