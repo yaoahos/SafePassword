@@ -6,7 +6,10 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.SystemClock
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import android.util.Size
 import android.view.ViewGroup
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,7 +46,6 @@ import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -66,25 +68,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.BinaryBitmap
-import com.google.zxing.DecodeHintType
-import com.google.zxing.LuminanceSource
-import com.google.zxing.MultiFormatReader
-import com.google.zxing.PlanarYUVLuminanceSource
-import com.google.zxing.RGBLuminanceSource
-import com.google.zxing.common.HybridBinarizer
+import com.yaoahos.safepassword.core.qr.QrDecoder
+import kotlinx.coroutines.delay
 import java.util.concurrent.Executors
-
-private val QR_HINTS: Map<DecodeHintType, Any> = mapOf(
-    DecodeHintType.POSSIBLE_FORMATS to listOf(
-        BarcodeFormat.QR_CODE,
-        BarcodeFormat.DATA_MATRIX,
-        BarcodeFormat.CODE_128,
-        BarcodeFormat.CODE_39
-    ),
-    DecodeHintType.TRY_HARDER to true
-)
 
 /**
  * 扫码录入动态验证码密钥。
@@ -92,6 +78,12 @@ private val QR_HINTS: Map<DecodeHintType, Any> = mapOf(
  * 取景页只负责「拿到一串文本」；是否像 TOTP 密钥交给调用方用 [com.yaoahos.safepassword.core.security.Totp.parse]
  * 判断，避免这里和 core 的解析规则各写一份。
  * 没有相机权限时仍可从相册选图识别（相册不需要 CAMERA 权限）。
+ *
+ * 三处容易「没反应」的地方在这里显式处理：
+ * 1. 解码在 ImageAnalysis 的线程上跑，回调必须切回主线程——否则调用方的 Toast
+ *    会抛「Can't toast on a thread that has not called Looper」并被分析线程的 catch 吞掉；
+ * 2. 相机绑定失败不再静默吞异常，直接把原因显示在提示行上；
+ * 3. 分析帧分辨率从默认 640×480 提到 1280×720，远距离的小二维码才够像素。
  */
 @Composable
 fun QrScannerDialog(
@@ -99,6 +91,7 @@ fun QrScannerDialog(
     onDecoded: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
     var granted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
@@ -112,11 +105,24 @@ fun QrScannerDialog(
     var torchOn by remember { mutableStateOf(false) }
     var hint by remember { mutableStateOf("把取景框对准网站给出的二维码") }
     var handled by remember { mutableStateOf(false) }
+    var cameraError by remember { mutableStateOf<String?>(null) }
+    // 已经跑过多少帧：>0 说明相机真的在出图，只是还没认出码，两种情况要给不同的提示。
+    var frames by remember { mutableStateOf(0) }
 
     val finish: (String) -> Unit = { text ->
         if (!handled) {
             handled = true
             onDecoded(text)
+        }
+    }
+
+    // 相机在出图但 7 秒还没认出码：提示用户调整，而不是一直干等。
+    LaunchedEffect(frames > 0, handled) {
+        if (frames > 0 && !handled) {
+            delay(7000)
+            if (!handled) {
+                hint = "还没认出来：把二维码放平、离远一点，或改用相册里的图片"
+            }
         }
     }
 
@@ -142,7 +148,10 @@ fun QrScannerDialog(
                 CameraPreview(
                     modifier = Modifier.fillMaxSize(),
                     torchOn = torchOn,
-                    onDecoded = { text -> finish(text) }
+                    onError = { message -> cameraError = message },
+                    onFrame = { if (frames == 0) frames = 1 },
+                    // 分析线程 → 主线程：状态写入与 Toast 都必须在主线程。
+                    onDecoded = { text -> mainHandler.post { finish(text) } }
                 )
             } else {
                 NoCameraPermission(
@@ -201,8 +210,8 @@ fun QrScannerDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    hint,
-                    color = Color(0xFFE6E8EB),
+                    cameraError ?: hint,
+                    color = if (cameraError != null) Color(0xFFFFB4AB) else Color(0xFFE6E8EB),
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center
                 )
@@ -261,6 +270,8 @@ private fun NoCameraPermission(onRequest: () -> Unit, onPickImage: () -> Unit) {
 private fun CameraPreview(
     modifier: Modifier,
     torchOn: Boolean,
+    onError: (String) -> Unit,
+    onFrame: () -> Unit,
     onDecoded: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -276,21 +287,24 @@ private fun CameraPreview(
         }
     }
     val executor = remember { Executors.newSingleThreadExecutor() }
-    val analyzer = remember { QrAnalyzer(onDecoded) }
+    val analyzer = remember { QrAnalyzer(onDecoded = onDecoded, onFrame = onFrame) }
     var camera by remember { mutableStateOf<Camera?>(null) }
 
     DisposableEffect(lifecycleOwner) {
         var provider: ProcessCameraProvider? = null
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
-            runCatching {
+            try {
                 val bound = future.get()
                 provider = bound
                 val preview = Preview.Builder()
                     .build()
                     .also { it.surfaceProvider = previewView.surfaceProvider }
+                @Suppress("DEPRECATION")
                 val analysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    // 默认 640×480 对远处的二维码像素不够，解不出来又不报错，表现就是「没反应」。
+                    .setTargetResolution(Size(1280, 720))
                     .build()
                     .also { it.setAnalyzer(executor, analyzer) }
                 bound.unbindAll()
@@ -300,6 +314,10 @@ private fun CameraPreview(
                     preview,
                     analysis
                 )
+            } catch (e: Exception) {
+                // 以前这里整个 runCatching 静默吞掉：相机没绑上时画面全黑、也不会出任何提示。
+                Log.w(TAG, "相机启动失败", e)
+                onError("相机启动失败：${e.message ?: "未知原因"}，可改用相册识别")
             }
         }, ContextCompat.getMainExecutor(context))
         onDispose {
@@ -317,69 +335,51 @@ private fun CameraPreview(
 
 /**
  * 逐帧解码。单线程执行（ImageAnalysis 的 executor），解出一帧后就不再处理。
- * 同一个内容 1.2 秒内只回调一次，避免抖动导致重复回填。
+ *
+ * 解码本身在 [QrDecoder]（纯 JVM，有单测覆盖行填充与旋转），这里只负责取 Y 平面、
+ * 复用缓冲区、把结果交出去。缓冲区复用是为了不在 30fps 下每帧分配近 1MB。
  */
-private class QrAnalyzer(private val onFound: (String) -> Unit) : ImageAnalysis.Analyzer {
-    private val reader = MultiFormatReader().apply { setHints(QR_HINTS) }
+private class QrAnalyzer(
+    private val onDecoded: (String) -> Unit,
+    private val onFrame: () -> Unit
+) : ImageAnalysis.Analyzer {
+    private val reader = QrDecoder.newReader()
+    private var luma = ByteArray(0)
     @Volatile
     private var handled = false
-    private var lastText: String? = null
-    private var lastAt = 0L
+    private var announced = false
 
     override fun analyze(image: ImageProxy) {
         try {
             if (handled) return
-            val text = decodeFrame(image) ?: return
-            val now = SystemClock.elapsedRealtime()
-            if (text == lastText && now - lastAt < 1200L) return
-            lastText = text
-            lastAt = now
+            if (!announced) {
+                announced = true
+                onFrame()
+            }
+            val plane = image.planes.firstOrNull() ?: return
+            val buffer = plane.buffer
+            val length = buffer.remaining()
+            if (length <= 0) return
+            if (luma.size < length) luma = ByteArray(length)
+            buffer.get(luma, 0, length)
+            val text = QrDecoder.decodeYuv(
+                reader = reader,
+                data = luma,
+                dataLength = length,
+                width = image.width,
+                height = image.height,
+                rowStride = plane.rowStride,
+                pixelStride = plane.pixelStride,
+                rotationDegrees = image.imageInfo.rotationDegrees
+            ) ?: return
             handled = true
-            onFound(text)
-        } catch (_: Exception) {
-            // 单帧解码失败是常态（对焦中、角度偏），直接丢给下一帧。
+            onDecoded(text)
+        } catch (e: Exception) {
+            // 单帧解码失败是常态（对焦中、角度偏），记一次日志后丢给下一帧。
+            Log.d(TAG, "解码失败：${e.message}")
         } finally {
             image.close()
         }
-    }
-
-    private fun decodeFrame(image: ImageProxy): String? = runCatching {
-        val plane = image.planes[0]
-        val buffer = plane.buffer
-        val width = image.width
-        val height = image.height
-        val rowStride = plane.rowStride
-        val pixelStride = plane.pixelStride
-        val data: ByteArray
-        if (pixelStride == 1 && rowStride == width) {
-            data = ByteArray(buffer.remaining()).also { buffer.get(it) }
-        } else {
-            // Y 平面每行末尾可能有填充字节，逐行抠出真正的 width 个像素。
-            data = ByteArray(width * height)
-            val row = ByteArray(rowStride)
-            var offset = 0
-            for (y in 0 until height) {
-                val len = minOf(rowStride, buffer.remaining())
-                if (len <= 0) break
-                buffer.get(row, 0, len)
-                System.arraycopy(row, 0, data, offset, minOf(width, len))
-                offset += width
-            }
-        }
-        var source: LuminanceSource =
-            PlanarYUVLuminanceSource(data, width, height, 0, 0, width, height, false)
-        // rotationDegrees 是「顺时针转多少度摆正」，ZXing 提供的是逆时针旋转。
-        repeat(rotationSteps(image.imageInfo.rotationDegrees)) {
-            source = source.rotateCounterClockwise()
-        }
-        reader.decodeWithState(BinaryBitmap(HybridBinarizer(source))).text
-    }.getOrNull()
-
-    private fun rotationSteps(degrees: Int): Int = when (((degrees % 360) + 360) % 360) {
-        90 -> 3
-        180 -> 2
-        270 -> 1
-        else -> 0
     }
 }
 
@@ -403,12 +403,10 @@ private fun decodeFromUri(context: Context, uri: Uri): String? = runCatching {
         }
         val pixels = IntArray(scaled.width * scaled.height)
         scaled.getPixels(pixels, 0, scaled.width, 0, 0, scaled.width, scaled.height)
-        val source = RGBLuminanceSource(scaled.width, scaled.height, pixels)
-        MultiFormatReader()
-            .apply { setHints(QR_HINTS) }
-            .decodeWithState(BinaryBitmap(HybridBinarizer(source)))
-            .text
+        QrDecoder.decodePixels(QrDecoder.newReader(), pixels, scaled.width, scaled.height)
     } finally {
         bitmap.recycle()
     }
 }.getOrNull()
+
+private const val TAG = "QrScanner"

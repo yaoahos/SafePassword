@@ -4,12 +4,12 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 - 项目名：`SafePassword`
 - 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.0.6`（versionCode 7）
+- 正式版本：`1.0.7`（versionCode 8）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`SafePassword-1.0.6-release.apk`
-- APK 大小：3,018,551 字节
-- SHA-256：`1155e990eaec82c9a36484db99198076b8118e324e86f9d9e0db37aa0d38fb8c`
+- 正式 APK：`SafePassword-1.0.7-release.apk`
+- APK 大小：3,019,059 字节
+- SHA-256：`0bcca27b63acda490d34d8d870bac6f0f8f7a49bcd21c1dbdea1480f64459290`
 - 发布下载：[Releases](https://github.com/yaoahos/SafePassword/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
@@ -117,7 +117,8 @@ SafePassword 面向希望把密码数据掌握在自己手里的用户。它不�
 - 指纹被重新录入或全部删除时，系统会作废该密钥，应用自动清除失效凭据并要求重新开启。
 - 指纹传感器硬件损坏等无法使用的情况出现时，应用自动关闭指纹解锁，不再要求先验证指纹才能关闭。
 - 修改主密码后指纹凭据自动失效，需要重新开启（避免旧密码残留在磁盘上）。
-- 支持自动锁定；应用退到后台后按设置锁定。
+- 支持自动锁定；应用退到后台超过设定时间后再回来需要重新解锁（主密码或指纹）。
+  锁定会清除内存中的主密码与解密后的数据，但不结束应用进程。
 - 生物识别失败时保留主密码解锁入口。
 
 ### 4. 网络与隐私
@@ -222,21 +223,21 @@ apps/android/build/outputs/apk/release/android-release.apk
 重命名并复制到 `dist/`：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.6-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.7-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose dist\SafePassword-1.0.6-release.apk
-aapt.exe dump badging dist\SafePassword-1.0.6-release.apk
+apksigner.bat verify --verbose dist\SafePassword-1.0.7-release.apk
+aapt.exe dump badging dist\SafePassword-1.0.7-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.yaoahos.safepassword`
 - `versionCode: 7`
-- `versionName: 1.0.6`
+- `versionName: 1.0.7`
 - `application-label: SafePassword`
 - APK Signature Scheme v2：通过
 - 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`、`CAMERA`（仅扫码录入动态验证码时使用，可拒绝并从相册选图）
@@ -244,7 +245,7 @@ aapt.exe dump badging dist\SafePassword-1.0.6-release.apk
 ### 6. 测试
 
 - `:core:test` 覆盖加密、密码库容器、WebDAV 客户端、XML 导入导出、TOTP（RFC 6238 向量）、工具函数等。
-- 当前核心测试 52/52 通过。
+- 当前核心测试 59/59 通过（新增 7 条二维码解码用例）。
 
 ---
 
@@ -267,7 +268,7 @@ aapt.exe dump badging dist\SafePassword-1.0.6-release.apk
 - 同步：工具 → WebDAV 同步，填写服务器地址、用户名、密码和远程目录后先「测试连接」再「保存并立即同步」；多设备用同一远程目录即可共享同一批密码库文件，每个密码库各自一个文件，由 `SafePassword-index.json` 记录清单。
 - 备份：设置 → 本地备份，先选择保存目录（系统文件选择器，可放 SD 卡或网盘同步目录），再创建加密备份或设置自动备份间隔；恢复时需输入该备份的主密码。
 - 导入导出：工具 → 导入密码支持多选 CSV、JSON 与 XML；设置 → 数据可导出 CSV、JSON、XML。
-- TOTP 认证器：新建/编辑字段时选「动态验证码」类型，字段右侧的扫码按钮可直接对着网站给出的二维码扫，也能从相册选一张二维码截图识别；也可以手动粘贴 `otpauth://` 链接或 Base32 密钥（密钥文件码）。详情页实时显示 6 位动态码与剩余秒数，复制按钮复制的是当前动态码，眼睛按钮可查看密钥原文。
+- TOTP 认证器：新建/编辑字段时选「动态验证码」类型，字段右侧 ⋮ 菜单里的「扫码录入密钥」可直接对着网站给出的二维码扫，也能从相册选一张二维码截图识别；也可以手动粘贴 `otpauth://` 链接或 Base32 密钥（密钥文件码）。详情页实时显示 6 位动态码与剩余秒数，复制按钮复制的是当前动态码，眼睛按钮可查看密钥原文。
 
 **平板与横屏**：内容区限宽，密码库与工具页使用多列布局，顶栏、抽屉、详情和编辑页保持同一套结构，旋转屏幕后页面状态尽量保留。
 
@@ -354,6 +355,15 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/11/13 · 1.0.7**
+- 修复 实时扫码没反应：解码结果改回主线程回调、分析分辨率提到 1280×720、相机启动失败会提示原因
+- 修复 从详情/设置/安全中心返回首页时整页朝中间缩小一下；转场改为纯水平位移
+- 修复 桌面点图标偶尔闪一下退回桌面：首帧即设禁止截屏、配置变化不再重建界面、首次读设置失败改为重试
+- 优化 动态验证码字段不再显示查看按钮，扫码入口移到字段菜单；密码字段的「生成密码」保留
+- 优化 「新建标签」「添加字段」统一左对齐，字段行距统一
+- 优化 更新日志严格最多显示 5 个版本
+- 变更 「锁定并清除内存中的主密码」说明改为「需重新输入主密码」
 
 **2026/11/12 · 1.0.6**
 - 新增 动态验证码字段支持扫码录入（实时相机扫码与相册图片识别）
