@@ -93,6 +93,19 @@ object BiometricHelper {
     fun isUserCancelled(code: Int): Boolean =
         code == BiometricPrompt.ERROR_NEGATIVE_BUTTON || code == BiometricPrompt.ERROR_USER_CANCELED
 
+    /**
+     * 硬件类错误：指纹传感器损坏、无法处理、没有录入、永久锁定。
+     * 这类错误下"先验证指纹才能关闭指纹解锁"永远走不通，调用方应直接关闭开关，
+     * 否则会卡死在"指纹坏了却关不掉"的死循环里。
+     * （暂时性锁定 [BiometricPrompt.ERROR_LOCKOUT] 会自行恢复，不算硬件错误。）
+     */
+    fun isHardwareError(code: Int): Boolean = code == BiometricPrompt.ERROR_HW_UNAVAILABLE ||
+        code == BiometricPrompt.ERROR_UNABLE_TO_PROCESS ||
+        code == BiometricPrompt.ERROR_NO_BIOMETRICS ||
+        code == BiometricPrompt.ERROR_LOCKOUT_PERMANENT ||
+        code == BiometricPrompt.ERROR_NO_DEVICE_CREDENTIAL ||
+        code == ERROR_CANNOT_START
+
     /** prompt.authenticate 直接抛异常（例如宿主 Activity 正在销毁）。 */
     const val ERROR_CANNOT_START = -1
 }

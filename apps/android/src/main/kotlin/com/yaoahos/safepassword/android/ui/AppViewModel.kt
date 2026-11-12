@@ -108,6 +108,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 container.settings.settings = reconciled
             }
             val fingerprint = BiometricHelper.status(app)
+            // 指纹硬件损坏 / 录入被删时自动关掉指纹解锁：
+            // 否则设置页还要「先验证指纹才能关」，而传感器已经坏了，永远关不掉。
+            var fingerprintAutoDisabled = false
+            if (reconciled.fingerprintEnabled && (!fingerprint.available || !fingerprint.enrolled)) {
+                reconciled = reconciled.copy(fingerprintEnabled = false, biometricEnabled = false)
+                container.settings.settings = reconciled
+                meta?.let { container.biometric.clear(it.id) }
+                fingerprintAutoDisabled = true
+            }
             _state.update {
                 it.copy(
                     initialized = true,
@@ -117,7 +126,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     activeMeta = meta,
                     screen = Screen.Unlock,
                     fingerprintAvailable = fingerprint.available,
-                    biometricSaved = meta != null && container.biometric.has(meta.id)
+                    biometricSaved = meta != null && container.biometric.has(meta.id),
+                    message = if (fingerprintAutoDisabled) "指纹不可用，已自动关闭指纹解锁" else it.message
                 )
             }
             // 启动时查一次更新：等用户解锁到首页再查，避免更新框盖在解锁界面上。
@@ -1025,13 +1035,27 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         unlock(meta.id, unlocked)
     }
 
-    fun disableFingerprint() {
+    /** 关闭指纹解锁；[message] 用于区分「用户主动关」和「指纹坏了自动关」。 */
+    fun disableFingerprint(message: String = "已关闭指纹解锁") {
         val meta = _state.value.activeMeta ?: return
         updateSettings { it.copy(fingerprintEnabled = false, biometricEnabled = false) }
         container.biometric.clear(meta.id)
         _state.update {
-            it.copy(biometricSaved = false, message = "已关闭指纹解锁")
+            it.copy(biometricSaved = false, fingerprintAvailable = BiometricHelper.status(app).available, message = message)
         }
+    }
+
+    /**
+     * 指纹传感器损坏 / 系统指纹录入被删时自动关闭指纹解锁，避免
+     * 「指纹已经坏了却还要验证指纹才能关闭」的死锁。
+     * 返回 true 表示本次调用关掉了指纹。
+     */
+    fun ensureFingerprintHealthy(): Boolean {
+        if (!_state.value.settings.fingerprintEnabled) return false
+        val status = BiometricHelper.status(app)
+        if (status.available && status.enrolled) return false
+        disableFingerprint("指纹不可用（${status.message}），已自动关闭指纹解锁")
+        return true
     }
 
     // ---------------------------------------------------------------- WebDAV

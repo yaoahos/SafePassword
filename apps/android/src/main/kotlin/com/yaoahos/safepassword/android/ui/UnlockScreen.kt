@@ -79,7 +79,9 @@ fun UnlockScreen(viewModel: AppViewModel, state: AppUiState, activity: MainActiv
     fun startFingerprint(auto: Boolean = false) {
         val cipher = viewModel.prepareBiometricUnlock()
         if (cipher == null) {
-            viewModel.showError("指纹凭据不可用（可能指纹被重新录入），请用主密码解锁后重新开启指纹")
+            // 凭据已失效（指纹被重录等）：再怎么弹指纹也解不开，
+            // 直接关掉指纹解锁，回到主密码解锁，避免反复报错。
+            viewModel.disableFingerprint("指纹凭据已失效（可能指纹被重新录入），已关闭指纹解锁，请用主密码解锁")
             return
         }
         BiometricHelper.authenticate(
@@ -103,6 +105,10 @@ fun UnlockScreen(viewModel: AppViewModel, state: AppUiState, activity: MainActiv
                         }, 450L)
                     }
                     code == BiometricPrompt.ERROR_CANCELED -> Unit
+                    // 传感器损坏/无法处理/永久锁定：指纹已经不可用，自动关掉开关，
+                    // 否则设置页还会要求"先验证指纹才能关"，形成死锁。
+                    BiometricHelper.isHardwareError(code) ->
+                        viewModel.disableFingerprint("指纹识别不可用，已自动关闭指纹解锁：$message")
                     else -> viewModel.showError(message)
                 }
             }
