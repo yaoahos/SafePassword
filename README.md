@@ -4,12 +4,12 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 - 项目名：`SafePassword`
 - 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.0.9`（versionCode 10）
+- 正式版本：`1.0.10`（versionCode 11）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`SafePassword-1.0.9-release.apk`
-- APK 大小：3,036,115 字节
-- SHA-256：`e51b00f0fc2927b2ddf7e31b3938ec3750f07b07acdb515d14463a4a31ece988`
+- 正式 APK：`SafePassword-1.0.10-release.apk`
+- APK 大小：3,036,275 字节
+- SHA-256：`10a4221792cfd7eb3380c3e038fd134c65e3158189c27f921f7d7227943bfe32`
 - 发布下载：[Releases](https://github.com/yaoahos/SafePassword/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
@@ -53,7 +53,7 @@ SafePassword 面向希望把密码数据掌握在自己手里的用户。它不�
 - 新建、编辑、查看、复制、删除；回收站支持软删除、恢复与永久删除。
 - 字段类型：文本、密码、秘密、网址、邮箱、电话、文件（单个 ≤50KB 小文件）、TOTP 动态验证码；支持增删、改名与上下移动。
 - 密码独立显示/隐藏，附强度提示；可收藏、打多标签、批量选择。
-- 支持自定义图片图标：按 192×192 归一化（4:3 内居中裁切、超出等比留白），照片类超 48KB 自动降 128，按需解码。
+- 支持自定义图片图标：按 192×192 归一化（4:3 内居中裁切、超出等比留白），编码时 PNG / WebP 择优（图形类 PNG 约 1KB，照片类 WebP 约 15KB），按需解码。
 
 **搜索与排序**
 - 常驻搜索框，可搜标题、账号、网址，可选是否搜索密码内容。
@@ -223,21 +223,21 @@ apps/android/build/outputs/apk/release/android-release.apk
 重命名并复制到 `dist/`：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.9-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.10-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose dist\SafePassword-1.0.9-release.apk
-aapt.exe dump badging dist\SafePassword-1.0.9-release.apk
+apksigner.bat verify --verbose dist\SafePassword-1.0.10-release.apk
+aapt.exe dump badging dist\SafePassword-1.0.10-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.yaoahos.safepassword`
 - `versionCode: 7`
-- `versionName: 1.0.9`
+- `versionName: 1.0.10`
 - `application-label: SafePassword`
 - APK Signature Scheme v2：通过
 - 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`、`CAMERA`（仅扫码录入动态验证码时使用，可拒绝并从相册选图）
@@ -355,6 +355,12 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/11/13 · 1.0.10**
+- 优化 图标编码改为 PNG / WebP 择优（实测 192px：logo PNG 1.1KB vs WebP 1.8KB，照片 PNG 88.6KB vs WebP 15.9KB），照片类库体积降约 80%
+- 优化 图标显示解码上限 128 → 192，不再被 `inSampleSize` 压到 96px（以前「存 192」的清晰度没吃到）
+- 优化 「压缩已有图标」对照片类图标现在有实际效果（此前重编码仍输出 PNG，字节几乎不变）
+- 变更 图标编码格式不再固定为 PNG，桌面端 `itemIcon` 改为按 base64 魔数嗅探 `image/png` / `image/webp`
 
 **2026/11/13 · 1.0.9**
 - 优化 自定义图标统一存 192×192 PNG：4:3 以内居中裁切，横幅/竖图等比留白，不再要求先裁成正方形
