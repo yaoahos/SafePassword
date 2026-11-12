@@ -90,14 +90,19 @@ import com.yaoahos.safepassword.core.model.VaultItem
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/** 密码库标签页的内容区。顶栏/底栏/侧边栏由 [MainTabShell] 持有，这里只管列表本身。 */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
+fun VaultContent(
+    viewModel: AppViewModel,
+    state: AppUiState,
+    selectionMode: Boolean,
+    selectedIds: Set<String>,
+    onToggleSelection: (String) -> Unit,
+    onEnterSelection: (String) -> Unit,
+    onClearSelection: () -> Unit
+) {
     var sortMenu by remember { mutableStateOf(false) }
-    var selectionMode by remember { mutableStateOf(false) }
-    var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-    var showBulkLabels by remember { mutableStateOf(false) }
     var visibleSyncStatus by remember { mutableStateOf("") }
     var searchFocused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
@@ -113,8 +118,6 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
             visibleSyncStatus = ""
         }
     }
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
     val itemList = remember(
         state.activeVault,
         state.search,
@@ -129,7 +132,6 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
         .sortedWith(compareBy<Label> { it.sortOrder }.thenBy { it.name })
     val listState = rememberLazyListState()
     val loadIcons = true
-    val activeCount = state.activeVault?.activeItems()?.size ?: 0
     val activeLabelName = labels.firstOrNull { it.id == state.filterLabelId }?.name
     val collectionTitle = when {
         state.onlyFavorites -> "收藏"
@@ -141,20 +143,6 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
     val vaultName = state.activeMeta?.name ?: "我的密码库"
     // 标题保持分类名不变，条目数与排序方式统一放在副标题里。
     val collectionSubtitle = "$vaultName · ${itemList.size} 个条目"
-    val selectedItems = itemList.filter { it.id in selectedIds }
-    val allSelected = itemList.isNotEmpty() && selectedIds.size == itemList.size
-    val commonLabelIds = if (selectedItems.isEmpty()) {
-        emptySet()
-    } else {
-        labels.filter { label -> selectedItems.all { label.id in it.labelIds } }
-            .map { it.id }
-            .toSet()
-    }
-    val toggleSelection: (String) -> Unit = { id ->
-        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
-        if (selectedIds.isEmpty()) selectionMode = false
-    }
-
     // While the search field is focused, system back clears the query and focus
     // instead of leaving the vault screen.
     BackHandler(enabled = searchFocused) {
@@ -164,21 +152,8 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
         keyboard?.hide()
     }
 
-    // While items are selected, system back only clears the selection. It must not
-    // fall through to AppRoot and finish the activity / go to the launcher.
-    BackHandler(enabled = selectionMode) {
-        selectionMode = false
-        selectedIds = emptySet()
-    }
-
-    // Back while the drawer is open closes the drawer instead of leaving the app.
-    BackHandler(enabled = drawerState.isOpen) {
-        scope.launch { drawerState.close() }
-    }
-
     LaunchedEffect(state.search, state.filterLabelId, state.onlyFavorites, state.sortMode, state.sortAscending) {
-        selectedIds = emptySet()
-        selectionMode = false
+        onClearSelection()
         // 换了筛选条件就是另一批条目了，列表要回到顶部，
         // 否则会停在上一次滚动的位置，看起来像「顶部条目不见了」。
         listState.scrollToItem(0)
@@ -193,119 +168,10 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
         }
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            SafeSidebar(
-                vaultName = state.activeMeta?.name ?: "我的密码库",
-                itemCount = activeCount,
-                screen = Screen.Vault,
-                favoritesOnly = state.onlyFavorites,
-                trashSelected = false,
-                onClose = { scope.launch { drawerState.close() } },
-                onAllItems = {
-                    scope.launch { drawerState.close() }
-                    viewModel.setOnlyFavorites(false)
-                    viewModel.setFilterLabel(null)
-                    viewModel.navigate(Screen.Vault)
-                },
-                onFavorites = {
-                    scope.launch { drawerState.close() }
-                    viewModel.setOnlyFavorites(true)
-                    viewModel.setFilterLabel(null)
-                    viewModel.navigate(Screen.Vault)
-                },
-                onTrash = {
-                    scope.launch { drawerState.close() }
-                    viewModel.navigate(Screen.Trash)
-                },
-                onLabels = {
-                    scope.launch { drawerState.close() }
-                    viewModel.navigate(Screen.LabelManager())
-                },
-                onSettings = {
-                    scope.launch { drawerState.close() }
-                    viewModel.navigate(Screen.Settings)
-                },
-                onLock = {
-                    scope.launch { drawerState.close() }
-                    viewModel.lock()
-                },
-                onAppNameClick = {
-                    scope.launch { drawerState.close() }
-                    viewModel.checkForUpdates()
-                }
-            )
-        }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
     ) {
-        Scaffold(
-            contentWindowInsets = WindowInsets(0),
-            topBar = {
-                if (selectionMode) {
-                    SelectionTopBar(
-                        count = selectedIds.size,
-                        allSelected = allSelected,
-                        onClose = {
-                            selectionMode = false
-                            selectedIds = emptySet()
-                        },
-                        onSelectAll = {
-                            selectedIds = if (allSelected) emptySet() else itemList.map { it.id }.toSet()
-                        }
-                    )
-                } else {
-                    SafeCompactTopBar(
-                        title = stringResource(R.string.app_name),
-                        onMenu = { scope.launch { drawerState.open() } },
-                        onSync = viewModel::syncNow,
-                        onLock = viewModel::lock
-                    )
-                }
-            },
-            floatingActionButton = {
-                if (!selectionMode) {
-                    FloatingActionButton(
-                        onClick = { viewModel.navigate(Screen.EditItem(null)) },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        shape = CircleShape
-                    ) {
-                        Icon(
-                            Icons.Outlined.Add,
-                            contentDescription = "新建条目",
-                            modifier = Modifier.size(26.dp)
-                        )
-                    }
-                }
-            },
-            bottomBar = {
-                if (selectionMode) {
-                    SelectionActionsBar(
-                        selectedCount = selectedIds.size,
-                        onDuplicate = {
-                            selectedIds.firstOrNull()?.let(viewModel::duplicateItem)
-                            selectionMode = false
-                            selectedIds = emptySet()
-                        },
-                        onLabels = {
-                            if (labels.isEmpty()) {
-                                viewModel.showMessage("还没有标签，请先在侧边栏的标签管理中新建")
-                            } else {
-                                showBulkLabels = true
-                            }
-                        },
-                        onDelete = { showDeleteConfirm = true }
-                    )
-                } else {
-                    SafeBottomBar(selected = Screen.Vault, onNavigate = viewModel::navigate)
-                }
-            }
-        ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-            ) {
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                     Spacer(Modifier.height(4.dp))
                     VaultSearchField(
@@ -456,16 +322,13 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
                                             loadIcon = loadIcons,
                                             onClick = {
                                                 if (selectionMode) {
-                                                    toggleSelection(item.id)
+                                                    onToggleSelection(item.id)
                                                 } else {
                                                     viewModel.navigate(Screen.ViewItem(item.id))
                                                 }
                                             },
-                                            onLongClick = {
-                                                selectionMode = true
-                                                selectedIds = setOf(item.id)
-                                            },
-                                            onToggleSelection = { toggleSelection(item.id) },
+                                            onLongClick = { onEnterSelection(item.id) },
+                                            onToggleSelection = { onToggleSelection(item.id) },
                                             onFavorite = { viewModel.toggleFavorite(item.id) }
                                         )
                                     }
@@ -489,16 +352,13 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
                                     loadIcon = loadIcons,
                                     onClick = {
                                         if (selectionMode) {
-                                            toggleSelection(item.id)
+                                            onToggleSelection(item.id)
                                         } else {
                                             viewModel.navigate(Screen.ViewItem(item.id))
                                         }
                                     },
-                                    onLongClick = {
-                                        selectionMode = true
-                                        selectedIds = setOf(item.id)
-                                    },
-                                    onToggleSelection = { toggleSelection(item.id) },
+                                    onLongClick = { onEnterSelection(item.id) },
+                                    onToggleSelection = { onToggleSelection(item.id) },
                                     onFavorite = { viewModel.toggleFavorite(item.id) }
                                 )
                             }
@@ -507,40 +367,6 @@ fun VaultScreen(viewModel: AppViewModel, state: AppUiState) {
                 }
             }
         }
-    }
-
-    if (showDeleteConfirm) {
-        ConfirmDialog(
-            title = "移入回收站",
-            text = "确定删除选中的 ${selectedIds.size} 个条目吗？可以在回收站中恢复。",
-            confirmText = "删除",
-            destructive = true,
-            onDismiss = { showDeleteConfirm = false },
-            onConfirm = {
-                showDeleteConfirm = false
-                val ids = selectedIds
-                selectionMode = false
-                selectedIds = emptySet()
-                viewModel.deleteItems(ids)
-            }
-        )
-    }
-
-    if (showBulkLabels) {
-        BulkLabelDialog(
-            labels = labels,
-            selected = commonLabelIds,
-            onDismiss = { showBulkLabels = false },
-            onConfirm = { ids ->
-                showBulkLabels = false
-                val itemIds = selectedIds
-                selectionMode = false
-                selectedIds = emptySet()
-                viewModel.setLabelsForItems(itemIds, ids)
-            }
-        )
-    }
-}
 
 @Composable
 private fun CompactVaultTopBar(
@@ -620,7 +446,7 @@ internal fun SelectionTopBar(
 }
 
 @Composable
-private fun SelectionActionsBar(
+internal fun SelectionActionsBar(
     selectedCount: Int,
     onDuplicate: () -> Unit,
     onLabels: () -> Unit,
@@ -822,7 +648,7 @@ private fun ItemCard(
 }
 
 @Composable
-private fun BulkLabelDialog(
+internal fun BulkLabelDialog(
     labels: List<Label>,
     selected: Set<String>,
     onDismiss: () -> Unit,
