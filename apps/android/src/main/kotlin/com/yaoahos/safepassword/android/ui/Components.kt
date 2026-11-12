@@ -97,8 +97,10 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -194,6 +196,12 @@ fun PasswordField(
         singleLine = true,
         modifier = modifier.fillMaxWidth(),
         colors = safeFieldColors(),
+        // 用 Password 键盘类型：输入法不会把主密码当成普通词去联想、
+        // 也不会记进用户词库（默认的文本键盘会）。
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Password,
+            autoCorrectEnabled = false
+        ),
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = if (onToggleVisibility != null) {
             {
@@ -271,24 +279,28 @@ enum class NoticeStyle(val bg: Color, val fg: Color) {
 }
 
 /**
- * 顶部彩色提示条：圆角卡片、限宽居中、自动消失、点一下即关。
+ * 顶部彩色提示条：圆角卡片、宽随内容、自动消失、点一下即关。
  * 成功/警告/信息 2.5 秒后消失，错误留 5 秒；替代旧的底部黑底 snackbar。
+ *
+ * 宽度不写死：只有一句话时卡片就是一句话宽，长文案才在当前行宽内换行，
+ * 最多 420dp。图标与文字按行高垂直居中（多行时图标居中于整块文字）。
  */
 @Composable
 fun TopNotice(
     message: String,
     style: NoticeStyle,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** 同一条提示连续出现时用它区分，否则计时器不会重开。 */
+    seq: Long = 0L
 ) {
-    LaunchedEffect(message, style) {
+    LaunchedEffect(message, style, seq) {
         delay(if (style == NoticeStyle.ERROR) 5000L else 2500L)
         onDismiss()
     }
     Surface(
         modifier = modifier
-            .widthIn(max = 420.dp)
-            .fillMaxWidth()
+            .widthIn(min = 96.dp, max = 420.dp)
             .clickable(onClick = onDismiss),
         shape = RoundedCornerShape(12.dp),
         color = style.bg,
@@ -314,8 +326,9 @@ fun TopNotice(
                 message,
                 color = style.fg,
                 fontSize = 13.sp,
+                lineHeight = 18.sp,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f)
+                textAlign = TextAlign.Start
             )
         }
     }

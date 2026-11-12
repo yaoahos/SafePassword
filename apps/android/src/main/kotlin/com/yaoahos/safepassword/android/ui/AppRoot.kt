@@ -3,13 +3,10 @@ package com.yaoahos.safepassword.android.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -63,6 +60,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material3.Icon
@@ -72,8 +72,14 @@ import androidx.compose.ui.text.font.FontWeight
 @Composable
 fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    // 顶部彩色提示条：message 走成功态、error 走错误态；显示后立即清掉 state。
-    var notice by remember { mutableStateOf<Pair<String, NoticeStyle>?>(null) }
+    // 顶部彩色提示条：message 走成功态、error 走错误态。
+    // 用队列而不是单值：连续两次操作（例如保存后立刻同步）时前一条不会被顶掉，
+    // 后一条排队等前一条自动消失或用户点掉。
+    var noticeQueue by remember { mutableStateOf<List<NoticeItem>>(emptyList()) }
+    var noticeSeq by remember { mutableStateOf(0L) }
+    // 退出动画播放期间 queue 可能已经空了，这里留一份最后显示的内容，
+    // 否则 AnimatedVisibility 会直接消失而不是滑出。
+    var lastShown by remember { mutableStateOf<NoticeItem?>(null) }
     val screenStateHolder = rememberSaveableStateHolder()
 
     LaunchedEffect(state.settings.screenshotAllowed) {
@@ -88,14 +94,21 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
 
     LaunchedEffect(state.message) {
         val message = state.message ?: return@LaunchedEffect
-        notice = message to NoticeStyle.SUCCESS
+        noticeSeq += 1
+        noticeQueue = noticeQueue + NoticeItem(noticeSeq, message, NoticeStyle.SUCCESS)
         viewModel.consumeMessage()
     }
 
     LaunchedEffect(state.error) {
         val error = state.error ?: return@LaunchedEffect
-        notice = error to NoticeStyle.ERROR
+        noticeSeq += 1
+        noticeQueue = noticeQueue + NoticeItem(noticeSeq, error, NoticeStyle.ERROR)
         viewModel.consumeError()
+    }
+
+    val currentNotice = noticeQueue.firstOrNull()
+    LaunchedEffect(currentNotice) {
+        if (currentNotice != null) lastShown = currentNotice
     }
 
     BackHandler(
@@ -157,71 +170,83 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                                         }
                                     } else {
                                         Box(Modifier.fillMaxSize()) {
+                                            // 左边缘右滑返回：从屏幕最左侧 20dp 内起手，
+                                            // 位移超过 30% 页宽才提交，避免误触。
+                                            val canEdgeBack = state.screen != Screen.Vault &&
+                                                state.screen != Screen.Tools
+                                            val edgeBackModifier = if (canEdgeBack) {
+                                                Modifier.pointerInput(state.screen) {
+                                                    val edgePx = PageMotion.EDGE_DP.dp.toPx()
+                                                    val commitPx = size.width * PageMotion.COMMIT_RATIO
+                                                    var armed = false
+                                                    var dragged = 0f
+                                                    detectHorizontalDragGestures(
+                                                        onDragStart = { offset ->
+                                                            armed = offset.x <= edgePx
+                                                            dragged = 0f
+                                                        },
+                                                        onDragCancel = {
+                                                            armed = false
+                                                            dragged = 0f
+                                                        },
+                                                        onDragEnd = {
+                                                            if (armed && dragged >= commitPx) {
+                                                                viewModel.goBack()
+                                                            }
+                                                            armed = false
+                                                            dragged = 0f
+                                                        },
+                                                        onHorizontalDrag = { change, amount ->
+                                                            if (armed) {
+                                                                dragged += amount
+                                                                // 只消费向右的位移，向左交还给下层（避免吃掉点击/滚动）。
+                                                                if (dragged > 0f) change.consume()
+                                                            }
+                                                        }
+                                                    )
+                                                }
+                                            } else {
+                                                Modifier
+                                            }
                                             MainTabShell(viewModel, state, screenStateHolder)
                                             AnimatedContent(
                                                 targetState = state.screen
                                                     .takeIf { it != Screen.Vault && it != Screen.Tools },
                                                 transitionSpec = {
-                                                    // 与旧版层级转场同构：
-                                                    // 进入下层从右侧滑入、返回 tab 层反向滑出，下层之间按前后方向滑动。
-                                                    val transform = when {
-                                                        initialState == null -> (
-                                                            slideInHorizontally(
-                                                                animationSpec = tween(320, easing = FastOutSlowInEasing)
-                                                            ) { if (state.navForward) it / 3 else -it / 3 } +
-                                                                fadeIn(tween(240, delayMillis = 40))
-                                                            ) togetherWith fadeOut(tween(150))
-
-                                                        targetState == null -> fadeIn(tween(240)) togetherWith (
-                                                            slideOutHorizontally(
-                                                                animationSpec = tween(320, easing = FastOutSlowInEasing)
-                                                            ) { it / 3 } +
-                                                                fadeOut(tween(150))
-                                                            )
-
-                                                        state.navForward -> (
-                                                            slideInHorizontally(
-                                                                animationSpec = tween(320, easing = FastOutSlowInEasing)
-                                                            ) { it / 3 } +
-                                                                fadeIn(tween(240, delayMillis = 40))
-                                                            ) togetherWith (
-                                                            slideOutHorizontally(
-                                                                animationSpec = tween(320, easing = FastOutSlowInEasing)
-                                                            ) { -it / 3 } +
-                                                                fadeOut(tween(150))
-                                                            )
-
-                                                        else -> (
-                                                            slideInHorizontally(
-                                                                animationSpec = tween(320, easing = FastOutSlowInEasing)
-                                                            ) { -it / 3 } +
-                                                                fadeIn(tween(240, delayMillis = 40))
-                                                            ) togetherWith (
-                                                            slideOutHorizontally(
-                                                                animationSpec = tween(320, easing = FastOutSlowInEasing)
-                                                            ) { it / 3 } +
-                                                                fadeOut(tween(150))
-                                                            )
-                                                    }
-                                                    transform.using(SizeTransform(clip = false))
+                                                    // 从 tab 层进来一定是前进；回到 tab 层（target 为 null）
+                                                    // 一定是返回。其余情况看 ViewModel 记录的方向。
+                                                    val forward = targetState != null && state.navForward
+                                                    pageTransition(forward)
                                                 },
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .clipToBounds()
+                                                    .then(edgeBackModifier),
                                                 label = "overlay"
                                             ) { target ->
                                                 if (target != null) {
-                                                    screenStateHolder.SaveableStateProvider(target.toString()) {
-                                                        when (val screen = target) {
-                                                            Screen.Security -> SecurityScreen(viewModel, state)
-                                                            Screen.Settings -> SettingsScreen(viewModel, state, activity)
-                                                            is Screen.ViewItem -> ItemViewScreen(viewModel, state, screen.itemId)
-                                                            is Screen.EditItem -> ItemEditScreen(viewModel, state, screen.itemId, screen.fromView)
-                                                            is Screen.WebDav -> WebDavScreen(viewModel, state, screen.restore)
-                                                            Screen.Backups -> BackupsScreen(viewModel, state)
-                                                            Screen.VaultManager -> VaultManagerScreen(viewModel, state)
-                                                            is Screen.LabelManager -> LabelManagerScreen(viewModel, state, screen.create)
-                                                            Screen.Trash -> TrashScreen(viewModel, state)
-                                                            Screen.Theme -> ThemeScreen(viewModel, state)
-                                                            Screen.About -> AboutScreen(viewModel, state)
-                                                            else -> {}
+                                                    // 每页铺一层不透明底色：页面根节点不一定自带背景，
+                                                    // 转场那 300ms 里透明部分会透出下层内容，出现残影。
+                                                    Box(
+                                                        Modifier
+                                                            .fillMaxSize()
+                                                            .background(MaterialTheme.colorScheme.background)
+                                                    ) {
+                                                        screenStateHolder.SaveableStateProvider(target.toString()) {
+                                                            when (val screen = target) {
+                                                                Screen.Security -> SecurityScreen(viewModel, state)
+                                                                Screen.Settings -> SettingsScreen(viewModel, state, activity)
+                                                                is Screen.ViewItem -> ItemViewScreen(viewModel, state, screen.itemId)
+                                                                is Screen.EditItem -> ItemEditScreen(viewModel, state, screen.itemId, screen.fromView)
+                                                                is Screen.WebDav -> WebDavScreen(viewModel, state, screen.restore)
+                                                                Screen.Backups -> BackupsScreen(viewModel, state)
+                                                                Screen.VaultManager -> VaultManagerScreen(viewModel, state)
+                                                                is Screen.LabelManager -> LabelManagerScreen(viewModel, state, screen.create)
+                                                                Screen.Trash -> TrashScreen(viewModel, state)
+                                                                Screen.Theme -> ThemeScreen(viewModel, state)
+                                                                Screen.About -> AboutScreen(viewModel, state)
+                                                                else -> {}
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -240,20 +265,27 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                 // 顶部彩色提示条（替代旧底部黑底 snackbar）：
                 // 圆角卡片限宽居中、顶部滑入、自动消失、点一下即关。
                 AnimatedVisibility(
-                    visible = notice != null,
+                    visible = currentNotice != null,
                     enter = slideInVertically(initialOffsetY = { -it / 2 }) + fadeIn(tween(220)),
                     exit = slideOutVertically(targetOffsetY = { -it / 2 }) + fadeOut(tween(150)),
                     modifier = Modifier.align(Alignment.TopCenter)
                 ) {
-                    val current = notice
-                    if (current != null) {
+                    val shown = currentNotice ?: lastShown
+                    if (shown != null) {
                         TopNotice(
-                            message = current.first,
-                            style = current.second,
-                            onDismiss = { notice = null },
+                            message = shown.text,
+                            style = shown.style,
+                            onDismiss = {
+                                noticeQueue = if (noticeQueue.isNotEmpty()) {
+                                    noticeQueue.drop(1)
+                                } else {
+                                    noticeQueue
+                                }
+                            },
                             modifier = Modifier
                                 .statusBarsPadding()
-                                .padding(top = 6.dp, start = 12.dp, end = 12.dp)
+                                .padding(top = 6.dp, start = 12.dp, end = 12.dp),
+                            seq = shown.seq
                         )
                     }
                 }
@@ -462,3 +494,6 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
     }
 }
 
+
+/** 顶部提示队列里的一条。[seq] 用来区分文案相同的连续提示（否则计时器不会重开）。 */
+private data class NoticeItem(val seq: Long, val text: String, val style: NoticeStyle)

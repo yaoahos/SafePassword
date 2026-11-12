@@ -4,12 +4,12 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 - 项目名：`SafePassword`
 - 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.0.5`（versionCode 6）
+- 正式版本：`1.0.6`（versionCode 7）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`SafePassword-1.0.5-release.apk`
-- APK 大小：2,641,862 字节
-- SHA-256：`40e38966cfe8e828c649863049d6b60b1976126ce67da04f810ecade46d185e0`
+- 正式 APK：`SafePassword-1.0.6-release.apk`
+- APK 大小：3,018,551 字节
+- SHA-256：`1155e990eaec82c9a36484db99198076b8118e324e86f9d9e0db37aa0d38fb8c`
 - 发布下载：[Releases](https://github.com/yaoahos/SafePassword/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
@@ -51,7 +51,7 @@ SafePassword 面向希望把密码数据掌握在自己手里的用户。它不�
 
 **条目**
 - 新建、编辑、查看、复制、删除；回收站支持软删除、恢复与永久删除。
-- 字段类型：文本、密码、秘密、TOTP 动态验证码、多行文本、网址、邮箱、电话、文件（单个 ≤50KB 小文件）；支持增删、改名与上下移动。
+- 字段类型：文本、密码、秘密、网址、邮箱、电话、文件（单个 ≤50KB 小文件）、TOTP 动态验证码；支持增删、改名与上下移动。
 - 密码独立显示/隐藏，附强度提示；可收藏、打多标签、批量选择。
 - 支持自定义图片图标（压缩为 256×256 正方形，按需解码）。
 
@@ -222,24 +222,24 @@ apps/android/build/outputs/apk/release/android-release.apk
 重命名并复制到 `dist/`：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.5-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.6-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose dist\SafePassword-1.0.5-release.apk
-aapt.exe dump badging dist\SafePassword-1.0.5-release.apk
+apksigner.bat verify --verbose dist\SafePassword-1.0.6-release.apk
+aapt.exe dump badging dist\SafePassword-1.0.6-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.yaoahos.safepassword`
-- `versionCode: 6`
-- `versionName: 1.0.5`
+- `versionCode: 7`
+- `versionName: 1.0.6`
 - `application-label: SafePassword`
 - APK Signature Scheme v2：通过
-- 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`
+- 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`、`CAMERA`（仅扫码录入动态验证码时使用，可拒绝并从相册选图）
 
 ### 6. 测试
 
@@ -267,7 +267,7 @@ aapt.exe dump badging dist\SafePassword-1.0.5-release.apk
 - 同步：工具 → WebDAV 同步，填写服务器地址、用户名、密码和远程目录后先「测试连接」再「保存并立即同步」；多设备用同一远程目录即可共享同一批密码库文件，每个密码库各自一个文件，由 `SafePassword-index.json` 记录清单。
 - 备份：设置 → 本地备份，先选择保存目录（系统文件选择器，可放 SD 卡或网盘同步目录），再创建加密备份或设置自动备份间隔；恢复时需输入该备份的主密码。
 - 导入导出：工具 → 导入密码支持多选 CSV、JSON 与 XML；设置 → 数据可导出 CSV、JSON、XML。
-- TOTP 认证器：新建/编辑字段时选「动态验证码」类型，把网站给出的 `otpauth://` 链接或 Base32 密钥（密钥文件码）填进字段值；详情页实时显示 6 位动态码与剩余秒数，点复制按钮复制的是当前动态码，眼睛按钮可查看密钥原文。
+- TOTP 认证器：新建/编辑字段时选「动态验证码」类型，字段右侧的扫码按钮可直接对着网站给出的二维码扫，也能从相册选一张二维码截图识别；也可以手动粘贴 `otpauth://` 链接或 Base32 密钥（密钥文件码）。详情页实时显示 6 位动态码与剩余秒数，复制按钮复制的是当前动态码，眼睛按钮可查看密钥原文。
 
 **平板与横屏**：内容区限宽，密码库与工具页使用多列布局，顶栏、抽屉、详情和编辑页保持同一套结构，旋转屏幕后页面状态尽量保留。
 
@@ -354,6 +354,15 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/11/12 · 1.0.6**
+- 新增 动态验证码字段支持扫码录入（实时相机扫码与相册图片识别）
+- 新增 页面水平推入转场，以及左边缘右滑返回
+- 优化 顶部提示条宽度随内容自适应；连续提示按队列依次显示
+- 优化 在标签分类下新建条目时默认带上该标签
+- 优化 冷启动不再先闪深色背景；更新包下载后校验包名与签名；明文导出前增加确认
+- 优化 应用内更新日志最多显示 5 个版本
+- 变更 移除「多行文本」字段类型，动态验证码移到类型列表末尾
 
 **2026/11/12 · 1.0.5**
 - 新增 TOTP 认证器字段：保存 otpauth:// 链接或 Base32 密钥，详情页实时生成 6 位动态码并可一键复制，可作 GitHub 等双因素登录的认证器

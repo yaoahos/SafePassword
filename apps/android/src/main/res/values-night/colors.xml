@@ -1,0 +1,4 @@
+<resources>
+    <!-- 夜间：与 Compose 主题的 DarkBackground 一致。 -->
+    <color name="window_background">#0C0C0E</color>
+</resources>

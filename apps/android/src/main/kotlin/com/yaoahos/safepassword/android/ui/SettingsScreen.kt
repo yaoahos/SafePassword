@@ -114,6 +114,8 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
     val exportVault = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri -> if (uri != null) viewModel.exportEncrypted(uri) }
+    // JSON / CSV / XML 都是明文（含全部密码），导出前先确认一次，避免手滑。
+    var pendingPlainExport by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     Scaffold(
         topBar = {
@@ -338,19 +340,19 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
                 SettingRow(
                     title = "导出 JSON",
                     subtitle = "明文，包含全部字段，注意保管",
-                    onClick = { exportJson.launch(defaultExportName(state, "json")) },
+                    onClick = { pendingPlainExport = { exportJson.launch(defaultExportName(state, "json")) } },
                     trailing = { Icon(Icons.Outlined.Download, contentDescription = null) }
                 )
                 SettingRow(
                     title = "导出 CSV",
                     subtitle = "适合迁移到其他密码管理器",
-                    onClick = { exportCsv.launch(defaultExportName(state, "csv")) },
+                    onClick = { pendingPlainExport = { exportCsv.launch(defaultExportName(state, "csv")) } },
                     trailing = { Icon(Icons.Outlined.Download, contentDescription = null) }
                 )
                 SettingRow(
                     title = "导出 XML",
                     subtitle = "可在支持该格式的应用中打开",
-                    onClick = { exportXml.launch(defaultExportName(state, "xml")) },
+                    onClick = { pendingPlainExport = { exportXml.launch(defaultExportName(state, "xml")) } },
                     trailing = { Icon(Icons.Outlined.Download, contentDescription = null) }
                 )
                 SettingRow(
@@ -378,6 +380,21 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
 
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    pendingPlainExport?.let { action ->
+        ConfirmDialog(
+            title = "导出为明文文件？",
+            text = "JSON / CSV / XML 里是完整的明文密码与备注，任何拿到文件的人都能直接看到。" +
+                "建议只在必须迁移时导出，用完及时删除。",
+            confirmText = "仍要导出",
+            destructive = true,
+            onDismiss = { pendingPlainExport = null },
+            onConfirm = {
+                pendingPlainExport = null
+                action()
+            }
+        )
     }
 
     if (showAutoLock) {

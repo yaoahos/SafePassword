@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -53,6 +54,7 @@ import androidx.compose.material.icons.outlined.Notes
 import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Phone
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
@@ -116,6 +118,7 @@ import com.yaoahos.safepassword.core.model.newId
 import com.yaoahos.safepassword.core.security.GeneratorOptions
 import com.yaoahos.safepassword.core.security.PasswordGenerator
 import com.yaoahos.safepassword.core.security.PasswordStrength
+import com.yaoahos.safepassword.core.security.Totp
 import java.io.ByteArrayOutputStream
 import java.io.File
 
@@ -128,8 +131,22 @@ fun ItemEditScreen(
     returnToView: Boolean = false
 ) {
     val existing = remember(itemId) { itemId?.let { state.activeVault?.item(it) } }
+    // 当前所在的标签分类（「全部」时为空）。新建条目、以及「保存并继续新建」
+    // 都用它作为默认标签，免得每建一条都要重新点一次标签。
+    val defaultLabelId = remember(state.filterLabelId, state.activeVault?.labels) {
+        state.filterLabelId?.takeIf { id ->
+            state.activeVault?.labels?.any { it.id == id } == true
+        }
+    }
     var item by remember(itemId) {
-        val initial = existing?.deepCopy() ?: TemplateCatalog.createItem(TemplateCatalog.LOGIN)
+        val initial = existing?.deepCopy() ?: run {
+            val created = TemplateCatalog.createItem(TemplateCatalog.LOGIN)
+            if (defaultLabelId != null) {
+                created.copy(labelIds = mutableListOf(defaultLabelId))
+            } else {
+                created
+            }
+        }
         mutableStateOf(initial.withUrlBeforeAccount())
     }
     var moreMenu by remember { mutableStateOf(false) }
@@ -406,9 +423,19 @@ fun ItemEditScreen(
                         }
                     }
                 }
-                TextButton(onClick = { showLabel = true }) {
-                    Icon(Icons.Outlined.Add, contentDescription = null)
-                    Spacer(Modifier.width(4.dp))
+                // 与上方标签 chip 左对齐：chip 的 leadingIcon 从 8dp 起，
+                // 这里把按钮的默认 12dp 内边距压到 8dp，图标再收到 18dp，
+                // 视觉上「+」的起点与标签圆点在同一条竖线上。
+                TextButton(
+                    onClick = { showLabel = true },
+                    contentPadding = PaddingValues(start = 8.dp, end = 12.dp, top = 0.dp, bottom = 0.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
                     Text("新建标签")
                 }
             }
@@ -440,7 +467,12 @@ fun ItemEditScreen(
                             viewModel.showError(error)
                         } else {
                             viewModel.saveItem(item, navigateBack = false)
-                            item = TemplateCatalog.createItem(TemplateCatalog.LOGIN).copy(id = newId())
+                            val next = TemplateCatalog.createItem(TemplateCatalog.LOGIN).copy(id = newId())
+                            item = if (defaultLabelId != null) {
+                                next.copy(labelIds = mutableListOf(defaultLabelId))
+                            } else {
+                                next
+                            }
                             titleError = false
                         }
                     },
@@ -640,6 +672,7 @@ private fun EditorFieldBox(
     var menu by remember(field.id) { mutableStateOf(false) }
     var visible by remember(field.id) { mutableStateOf(false) }
     var edit by remember(field.id) { mutableStateOf(false) }
+    var scan by remember(field.id) { mutableStateOf(false) }
     val context = LocalContext.current
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -667,43 +700,99 @@ private fun EditorFieldBox(
                 modifier = Modifier.weight(1f)
             )
         } else {
-        OutlinedTextField(
-            value = field.value,
-            onValueChange = { onChange(field.copy(value = it)) },
-            label = { Text(if (field.label == "用户名") "账号" else field.label) },
-            singleLine = field.type != FieldType.MULTILINE,
-            minLines = 1,
-            shape = RoundedCornerShape(12.dp),
-            colors = colors,
-            modifier = Modifier
-                .weight(1f)
-                .height(64.dp),
-            visualTransformation = if (field.type.masked && !visible) {
-                PasswordVisualTransformation()
-            } else {
-                VisualTransformation.None
-            },
-            keyboardOptions = when (field.type) {
-                FieldType.EMAIL -> KeyboardOptions(keyboardType = KeyboardType.Email)
-                FieldType.PHONE -> KeyboardOptions(keyboardType = KeyboardType.Phone)
-                FieldType.URL -> KeyboardOptions(keyboardType = KeyboardType.Uri)
-                else -> KeyboardOptions.Default
-            },
-            trailingIcon = if (field.type.masked) {
-                {
-                    IconButton(onClick = { visible = !visible }) {
-                        Icon(
-                            if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                            contentDescription = if (visible) "隐藏密码" else "显示密码",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
+            // 动态验证码字段多一个扫码按钮：网站上给的密钥通常就是一张二维码。
+            val trailing: (@Composable () -> Unit)? = when {
+                field.type == FieldType.TOTP -> {
+                    {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = { scan = true },
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Icon(
+                                    Icons.Outlined.QrCodeScanner,
+                                    contentDescription = "扫码录入密钥",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = { visible = !visible },
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Icon(
+                                    if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                    contentDescription = if (visible) "隐藏密钥" else "显示密钥",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
+                        }
                     }
                 }
-            } else {
-                null
+                field.type.masked -> {
+                    {
+                        IconButton(onClick = { visible = !visible }) {
+                            Icon(
+                                if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                contentDescription = if (visible) "隐藏密码" else "显示密码",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+                else -> null
             }
-        )
+            OutlinedTextField(
+                value = field.value,
+                onValueChange = { onChange(field.copy(value = it)) },
+                label = { Text(if (field.label == "用户名") "账号" else field.label) },
+                singleLine = field.type != FieldType.MULTILINE,
+                minLines = 1,
+                shape = RoundedCornerShape(12.dp),
+                colors = colors,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(64.dp),
+                visualTransformation = if (field.type.masked && !visible) {
+                    PasswordVisualTransformation()
+                } else {
+                    VisualTransformation.None
+                },
+                keyboardOptions = when {
+                    // 密码/秘密/动态验证码密钥不给输入法联想的机会，避免被记进用户词库。
+                    field.type.masked -> KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        autoCorrectEnabled = false
+                    )
+                    field.type == FieldType.EMAIL -> KeyboardOptions(keyboardType = KeyboardType.Email)
+                    field.type == FieldType.PHONE -> KeyboardOptions(keyboardType = KeyboardType.Phone)
+                    field.type == FieldType.URL -> KeyboardOptions(keyboardType = KeyboardType.Uri)
+                    else -> KeyboardOptions.Default
+                },
+                trailingIcon = trailing
+            )
+            if (scan) {
+                QrScannerDialog(
+                    onDismiss = { scan = false },
+                    onDecoded = { text ->
+                        scan = false
+                        // 回填原文：otpauth:// 链接含 period/digits/algorithm 等参数，
+                        // 只存 secret 会丢这些信息。
+                        if (Totp.parse(text) != null) {
+                            onChange(field.copy(value = text.trim()))
+                            Toast.makeText(context, "已填入动态验证码密钥", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(
+                                context,
+                                "这不是动态验证码密钥，换一个二维码试试",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                )
+            }
         }
         Column(
             modifier = Modifier.width(40.dp),
@@ -846,10 +935,14 @@ private fun FieldEditor(
         } else {
             VisualTransformation.None
         },
-        keyboardOptions = when (field.type) {
-            FieldType.EMAIL -> KeyboardOptions(keyboardType = KeyboardType.Email)
-            FieldType.PHONE -> KeyboardOptions(keyboardType = KeyboardType.Phone)
-            FieldType.URL -> KeyboardOptions(keyboardType = KeyboardType.Uri)
+        keyboardOptions = when {
+            field.type.masked -> KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                autoCorrectEnabled = false
+            )
+            field.type == FieldType.EMAIL -> KeyboardOptions(keyboardType = KeyboardType.Email)
+            field.type == FieldType.PHONE -> KeyboardOptions(keyboardType = KeyboardType.Phone)
+            field.type == FieldType.URL -> KeyboardOptions(keyboardType = KeyboardType.Uri)
             else -> KeyboardOptions.Default
         },
         trailingIcon = {
@@ -995,11 +1088,13 @@ private fun FieldDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(8.dp))
+                // 「多行文本」不再作为可选字段类型（备注已经承担长文本场景，
+                // 旧数据里的 MULTILINE 字段仍按原样显示与编辑）；动态验证码排最后。
                 listOf(
                     FieldType.TEXT, FieldType.PASSWORD,
-                    FieldType.SECRET, FieldType.TOTP,
-                    FieldType.URL, FieldType.EMAIL,
-                    FieldType.PHONE, FieldType.MULTILINE, FieldType.FILE
+                    FieldType.SECRET, FieldType.URL,
+                    FieldType.EMAIL, FieldType.PHONE,
+                    FieldType.FILE, FieldType.TOTP
                 ).chunked(2).forEach { rowTypes ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),

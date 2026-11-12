@@ -1,5 +1,8 @@
 package com.yaoahos.safepassword.android.update
 
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -242,6 +245,53 @@ object GitHubUpdater {
 
     fun normalize(version: String): String =
         version.trim().removePrefix("v").removePrefix("V").ifBlank { version.trim() }
+
+    /**
+     * 下载完成后核对安装包：包名必须一致，签名证书必须与当前应用相同。
+     *
+     * 系统安装时也会校验签名，但那一步的报错是「应用未安装」这种无信息量的结果；
+     * 这里提前拦下，能明确告诉用户包不对。签名不一致通常意味着资产被替换过。
+     *
+     * @return 校验失败的原因；通过时返回 null。
+     */
+    fun verifyDownloadedApk(context: Context, file: File): String? {
+        val pm = context.packageManager
+        val flags = PackageManager.GET_SIGNING_CERTIFICATES
+        val archive = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageArchiveInfo(
+                    file.absolutePath,
+                    PackageManager.PackageInfoFlags.of(flags.toLong())
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageArchiveInfo(file.absolutePath, flags)
+            }
+        }.getOrNull() ?: return "下载的安装包无法解析，请重试"
+
+        if (archive.packageName != context.packageName) {
+            return "下载的安装包不是本应用，已丢弃"
+        }
+
+        val current = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(
+                    context.packageName,
+                    PackageManager.PackageInfoFlags.of(flags.toLong())
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(context.packageName, flags)
+            }
+        }.getOrNull() ?: return "无法读取本应用签名，已丢弃该安装包"
+
+        val mine = current.signingInfo?.apkContentsSigners?.firstOrNull()?.toByteArray()
+            ?: return "无法读取本应用签名，已丢弃该安装包"
+        val theirs = archive.signingInfo?.apkContentsSigners?.firstOrNull()?.toByteArray()
+            ?: return "无法读取下载包的签名，已丢弃"
+
+        return if (mine.contentEquals(theirs)) null else "下载的安装包签名与本应用不一致，已丢弃"
+    }
 
     private fun compare(a: String, b: String): Int {
         val left = numbers(a)

@@ -11,6 +11,7 @@ import com.yaoahos.safepassword.core.model.VaultMeta
 import com.yaoahos.safepassword.core.security.SecurityReport
 import com.yaoahos.safepassword.core.sync.CloudVaultEntry
 import com.yaoahos.safepassword.core.sync.WebDavConfig
+import java.util.Locale
 
 data class AppUiState(
     val initialized: Boolean = false,
@@ -87,7 +88,8 @@ data class AppUiState(
 
 fun visibleItems(state: AppUiState): List<VaultItem> {
     val vault = state.activeVault ?: return emptyList()
-    val query = state.search.trim().lowercase()
+    // 用 Locale.ROOT：默认 locale 在土耳其语等环境会把 I 折成 ı，导致搜索匹配不上。
+    val query = state.search.trim().lowercase(Locale.ROOT)
     var items = vault.items.filter {
         it.status == com.yaoahos.safepassword.core.model.ItemStatus.ACTIVE
     }
@@ -102,17 +104,17 @@ fun visibleItems(state: AppUiState): List<VaultItem> {
     }
     if (query.isNotBlank()) {
         items = items.filter { item ->
-            item.title.lowercase().contains(query) ||
-                item.subtitle.lowercase().contains(query) ||
-                item.url.lowercase().contains(query) ||
-                item.notes.lowercase().contains(query) ||
+            item.title.lowercase(Locale.ROOT).contains(query) ||
+                item.subtitle.lowercase(Locale.ROOT).contains(query) ||
+                item.url.lowercase(Locale.ROOT).contains(query) ||
+                item.notes.lowercase(Locale.ROOT).contains(query) ||
                 item.fields.any { field ->
                     // 文件字段的 value 是 base64，搜索它没有意义，也别把内容泄漏进搜索结果。
                     field.type != FieldType.FILE &&
                         (state.settings.searchPasswords ||
                             (field.type != FieldType.PASSWORD && field.type != FieldType.SECRET &&
                                 field.type != FieldType.TOTP)) &&
-                        field.value.lowercase().contains(query)
+                        field.value.lowercase(Locale.ROOT).contains(query)
                 }
         }
     }
