@@ -4,12 +4,12 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 - 项目名：`SafePassword`
 - 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.0.3`（versionCode 4）
+- 正式版本：`1.0.4`（versionCode 5）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`SafePassword-1.0.3-release.apk`
+- 正式 APK：`SafePassword-1.0.4-release.apk`
 - APK 大小：2,624,846 字节
-- SHA-256：`9E3A6B4059023F171F66581D472EB67F05AA97563CEAD4AF9C76A14597F1F72A`
+- SHA-256：`cd5f839def4144cbeeb6c736ea6504519a601f1c8f83ba145c5227472bc838b6`
 - 发布下载：[Releases](https://github.com/yaoahos/SafePassword/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
@@ -51,7 +51,7 @@ SafePassword 面向希望把密码数据掌握在自己手里的用户。它不�
 
 **条目**
 - 新建、编辑、查看、复制、删除；回收站支持软删除、恢复与永久删除。
-- 字段类型：文本、密码、秘密、多行文本、网址、邮箱、电话；支持增删、改名与上下移动。
+- 字段类型：文本、密码、秘密、多行文本、网址、邮箱、电话、文件（单个 ≤50KB 小文件）；支持增删、改名与上下移动。
 - 密码独立显示/隐藏，附强度提示；可收藏、打多标签、批量选择。
 - 支持自定义图片图标（压缩为 256×256 正方形，按需解码）。
 
@@ -115,6 +115,7 @@ SafePassword 面向希望把密码数据掌握在自己手里的用户。它不�
 - 指纹开关的开启和关闭都需要系统生物识别确认。
 - **指纹解锁不是界面门禁**：主密码用 Android Keystore 中一把「每次使用都要用户认证」的 AES-256 密钥加密后存储，解密必须通过 BiometricPrompt 的 CryptoObject 授权；没有指纹就无法还原主密码。
 - 指纹被重新录入或全部删除时，系统会作废该密钥，应用自动清除失效凭据并要求重新开启。
+- 指纹传感器硬件损坏等无法使用的情况出现时，应用自动关闭指纹解锁，不再要求先验证指纹才能关闭。
 - 修改主密码后指纹凭据自动失效，需要重新开启（避免旧密码残留在磁盘上）。
 - 支持自动锁定；应用退到后台后按设置锁定。
 - 生物识别失败时保留主密码解锁入口。
@@ -221,21 +222,21 @@ apps/android/build/outputs/apk/release/android-release.apk
 重命名并复制到 `dist/`：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.0-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.4-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose dist\SafePassword-1.0.0-release.apk
-aapt.exe dump badging dist\SafePassword-1.0.0-release.apk
+apksigner.bat verify --verbose dist\SafePassword-1.0.4-release.apk
+aapt.exe dump badging dist\SafePassword-1.0.4-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.yaoahos.safepassword`
-- `versionCode: 1`
-- `versionName: 1.0.0`
+- `versionCode: 5`
+- `versionName: 1.0.4`
 - `application-label: SafePassword`
 - APK Signature Scheme v2：通过
 - 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`
@@ -243,7 +244,7 @@ aapt.exe dump badging dist\SafePassword-1.0.0-release.apk
 ### 6. 测试
 
 - `:core:test` 覆盖加密、密码库容器、WebDAV 客户端、XML 导入导出、工具函数等。
-- 当前核心测试 12/12 通过。
+- 当前核心测试 41/41 通过。
 
 ---
 
@@ -323,7 +324,7 @@ Gradle 模块路径：
 - 不包含密码填充/自动填充。
 - 不包含共享协作、团队空间。
 - 不包含 2FA/TOTP。
-- 不包含附件管理。
+- 不支持条目级附件管理；字段级仅限单个 ≤50KB 小文件。
 - 主密码遗忘后无法恢复；请务必保留备份。
 - XML 导入以标准条目、字段、标签、备注和图标为主；原版附件文件不会导入。
 - 云端冲突默认本地优先；如需以云端为准，请使用“拉取云端数据（覆盖本地）”。
@@ -352,6 +353,14 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/11/12 · 1.0.4**
+- 新增 文件字段，可保存单个 50KB 以内的小文件，随密码库加密与同步
+- 新增 WebDAV 同步页密码框支持显示/隐藏
+- 优化 添加、编辑字段弹窗的样式与类型选择
+- 修复 切换底部标签时顶栏与底栏抖动
+- 修复 指纹传感器异常时无法关闭指纹解锁，检测到硬件损坏自动关闭
+- 变更 应用签名密钥已重新生成
 
 **2026/11/05 · 1.0.3**
 - 优化 条目默认图标底色改为 17 色并加入取色扰动，条目多时更容易区分；与桌面端保持一致
