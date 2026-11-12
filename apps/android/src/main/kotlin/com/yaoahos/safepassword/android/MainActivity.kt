@@ -10,15 +10,25 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import com.yaoahos.safepassword.android.ui.AppRoot
 import com.yaoahos.safepassword.android.ui.AppViewModel
 import com.yaoahos.safepassword.android.update.ApkInstaller
 import com.yaoahos.safepassword.android.update.UpdateNotifications
 import java.io.File
 
-class MainActivity : AppCompatActivity() {
+/**
+ * 用 [FragmentActivity] 而不是 `AppCompatActivity`。
+ *
+ * `AppCompatActivity.onCreate` 会执行 `AppCompatDelegate.applyDayNight()`：首次冷启动时
+ * 若系统深浅色与上次记录不一致，它会写回偏好并 `recreate()` 自己，系统启动动画放到
+ * 一半被打断，用户看到的就是「弹一下又缩回桌面，点第二次才正常」；第二次本地记录
+ * 已同步，不再重建，于是又表现得完全正常。本应用界面全由 Compose 的 MaterialTheme
+ * 按应用内设置绘制，不依赖 AppCompat 的夜间模式，也不需要 ActionBar。
+ * 保留 FragmentActivity 是因为 BiometricPrompt 的 CryptoObject 需要它。
+ */
+class MainActivity : FragmentActivity() {
     private val viewModel: AppViewModel by viewModels()
 
     /**
@@ -65,6 +75,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun setSecure(enabled: Boolean) {
+        // 幂等：AppRoot 首帧还会按设置再调一次。值没变就别碰窗口 flag——MIUI/HyperOS
+        // 在系统启动动画期间收到重复的窗口属性变化会直接掐断动画（弹到一半缩回）。
+        val secure = (window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE) != 0
+        if (secure == enabled) return
         if (enabled) {
             window.setFlags(
                 WindowManager.LayoutParams.FLAG_SECURE,

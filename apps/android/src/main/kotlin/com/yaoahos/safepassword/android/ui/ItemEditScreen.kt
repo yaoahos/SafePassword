@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -663,9 +664,16 @@ private fun EditorFieldBox(
         if (uri != null) {
             readSmallFile(context, uri)
                 .onSuccess { (bytes, name, mime) ->
+                    val encoded = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    // 重复选中同一个文件时不做替换：内容一致却改 updatedAt 会白白触发一次同步，
+                    // 而且用户得不到任何反馈，会以为没点上。
+                    if (encoded == field.value && name == field.fileName) {
+                        Toast.makeText(context, "当前已是该文件，未做替换", Toast.LENGTH_SHORT).show()
+                        return@onSuccess
+                    }
                     onChange(
                         field.copy(
-                            value = Base64.encodeToString(bytes, Base64.NO_WRAP),
+                            value = encoded,
                             fileName = name,
                             fileMime = mime
                         )
@@ -678,26 +686,15 @@ private fun EditorFieldBox(
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (field.type == FieldType.FILE) {
-            // 文件框本身只显示文件名与大小，看不出这个字段叫什么；
-            // 字段名放在框外上方一行小字，和详情页「字段名在上、值在下」的排布一致。
-            Column(modifier = Modifier.weight(1f)) {
-                if (field.label.isNotBlank()) {
-                    Text(
-                        field.label,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 13.dp, bottom = 3.dp)
-                    )
-                }
-                FileFieldBox(
-                    field = field,
-                    onPick = { filePicker.launch(arrayOf("*/*")) },
-                    onClear = { onChange(field.copy(value = "", fileName = "", fileMime = "")) },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            // 字段名画在框线内（压在边框上），和其它类型的 OutlinedTextField 浮动标签一致。
+            // 以前放在框外上方一行小字，比其它字段多出一行高度，看起来是另一种东西。
+            FileFieldBox(
+                label = field.label,
+                field = field,
+                onPick = { filePicker.launch(arrayOf("*/*")) },
+                onClear = { onChange(field.copy(value = "", fileName = "", fileMime = "")) },
+                modifier = Modifier.weight(1f)
+            )
         } else {
             // 动态验证码不是密码：框内不放任何按钮（不打点、不看、不扫），
             // 扫码入口在右侧 ⋮ 菜单里。
@@ -916,52 +913,72 @@ private val FieldType.obscured: Boolean
 /** 文件字段的选择框：未选时点按选文件，已选时显示文件名与大小。 */
 @Composable
 private fun FileFieldBox(
+    label: String,
     field: Field,
     onPick: () -> Unit,
     onClear: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val bytes = remember(field.value) { field.fileBytes() }
-    Row(
-        modifier = modifier
-            .height(64.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .border(1.dp, Color.Black, RoundedCornerShape(12.dp))
-            .clickable(onClick = onPick)
-            .padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            Icons.Outlined.AttachFile,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                if (bytes == null) "选择文件" else field.fileName.ifBlank { "文件" },
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, Color.Black, RoundedCornerShape(12.dp))
+                .clickable(onClick = onPick)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Outlined.AttachFile,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
             )
-            Text(
-                if (bytes == null) "单个文件，不超过 50KB"
-                else "${formatFileSize(bytes.size)} · 点按更换",
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        if (bytes != null) {
-            IconButton(onClick = onClear, modifier = Modifier.size(30.dp)) {
-                Icon(
-                    Icons.Outlined.Close,
-                    contentDescription = "清除文件",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(17.dp)
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    if (bytes == null) "选择文件" else field.fileName.ifBlank { "文件" },
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    if (bytes == null) "单个文件，不超过 50KB"
+                    else "${formatFileSize(bytes.size)} · 点按更换",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            if (bytes != null) {
+                IconButton(onClick = onClear, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        Icons.Outlined.Close,
+                        contentDescription = "清除文件",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+            }
+        }
+        if (label.isNotBlank()) {
+            // 压在上边框上：偏移半个行高，背景用页面底色「咬」出缺口，
+            // 视觉上与 Material3 的 OutlinedTextField 标签完全一致。
+            Text(
+                label,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(x = 16.dp, y = (-8).dp)
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(horizontal = 4.dp)
+            )
         }
     }
 }
