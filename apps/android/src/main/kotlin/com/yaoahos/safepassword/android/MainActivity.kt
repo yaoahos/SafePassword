@@ -37,6 +37,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // 首帧之前就把 FLAG_SECURE 挂上（默认禁止截屏）。
+        // 以前这一步由 Compose 侧在首帧组合后的 LaunchedEffect 里做，等于在系统启动动画
+        // 进行中临时改窗口 flag，MIUI/HyperOS 会把启动动画掐断——用户看到的就是
+        // 「点图标 → 闪一下 → 还在桌面」。设置里允许截屏时，AppRoot 会在读到设置后清掉这个 flag。
+        setSecure(true)
         setContent {
             AppRoot(viewModel = viewModel, activity = this)
         }

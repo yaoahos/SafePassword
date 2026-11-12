@@ -88,51 +88,74 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            val vaults = container.vaultStore.list()
-            val stored = container.settings.settings
-            // 1.3.x 的通用 biometricEnabled 只对应指纹；人脸解锁已移除。
-            val settings = if (stored.biometricEnabled && !stored.fingerprintEnabled) {
-                stored.copy(fingerprintEnabled = true)
-            } else {
-                stored
-            }
-            if (settings != stored) container.settings.settings = settings
-            val webDav = container.settings.webDav
-            val lastId = container.settings.lastVaultId
-            val meta = vaults.firstOrNull { it.id == lastId } ?: vaults.firstOrNull()
-            // 主密码明文凭据不会被保存；如果设置里仍标记“已开启”，
-            // 会和实际状态不一致（设置页显示已开启、解锁页却没有指纹按钮），这里纠正过来。
-            var reconciled = settings
-            if (meta != null && reconciled.fingerprintEnabled && !container.biometric.has(meta.id)) {
-                reconciled = reconciled.copy(fingerprintEnabled = false, biometricEnabled = false)
-                container.settings.settings = reconciled
-            }
-            val fingerprint = BiometricHelper.status(app)
-            // 指纹硬件损坏 / 录入被删时自动关掉指纹解锁：
-            // 否则设置页还要「先验证指纹才能关」，而传感器已经坏了，永远关不掉。
-            var fingerprintAutoDisabled = false
-            if (reconciled.fingerprintEnabled && (!fingerprint.available || !fingerprint.enrolled)) {
-                reconciled = reconciled.copy(fingerprintEnabled = false, biometricEnabled = false)
-                container.settings.settings = reconciled
-                meta?.let { container.biometric.clear(it.id) }
-                fingerprintAutoDisabled = true
+            // 冷启动偶尔会撞上 Keystore 还没就绪（开机后第一次读加密设置、换机恢复后首次访问）。
+            // 以前这类失败会直接抛穿 IO 协程把进程带走，桌面上看到的就是
+            // 「点图标 → 界面闪一下 → 还在桌面」，第二次点图标（Keystore 已热）才正常。
+            // 现在重试三次，仍失败就停在解锁页并提示，无论如何都不让初始化异常变成崩溃。
+            var lastError: Throwable? = null
+            repeat(INIT_MAX_ATTEMPTS) { attempt ->
+                val result = runCatching { loadInitialState() }
+                if (result.isSuccess) return@launch
+                lastError = result.exceptionOrNull()
+                android.util.Log.w(
+                    INIT_LOG_TAG,
+                    "初始化第 ${attempt + 1} 次失败：${lastError?.message}",
+                    lastError
+                )
+                delay(300L * (attempt + 1))
             }
             _state.update {
-                it.copy(
-                    initialized = true,
-                    vaults = vaults,
-                    settings = reconciled,
-                    webDav = webDav,
-                    activeMeta = meta,
-                    screen = Screen.Unlock,
-                    fingerprintAvailable = fingerprint.available,
-                    biometricSaved = meta != null && container.biometric.has(meta.id),
-                    message = if (fingerprintAutoDisabled) "指纹不可用，已自动关闭指纹解锁" else it.message
-                )
+                it.copy(initialized = true, error = "读取本机设置失败，请重启应用后再试")
             }
-            // 启动时查一次更新：等用户解锁到首页再查，避免更新框盖在解锁界面上。
-            launchUpdatePending = reconciled.checkUpdatesOnLaunch
         }
+    }
+
+    /** 首次进入时把密码库列表、设置、指纹状态一次读齐；由 [init] 负责重试与兜底。 */
+    private suspend fun loadInitialState() {
+        val vaults = container.vaultStore.list()
+        val stored = container.settings.settings
+        // 1.3.x 的通用 biometricEnabled 只对应指纹；人脸解锁已移除。
+        val settings = if (stored.biometricEnabled && !stored.fingerprintEnabled) {
+            stored.copy(fingerprintEnabled = true)
+        } else {
+            stored
+        }
+        if (settings != stored) container.settings.settings = settings
+        val webDav = container.settings.webDav
+        val lastId = container.settings.lastVaultId
+        val meta = vaults.firstOrNull { it.id == lastId } ?: vaults.firstOrNull()
+        // 主密码明文凭据不会被保存；如果设置里仍标记“已开启”，
+        // 会和实际状态不一致（设置页显示已开启、解锁页却没有指纹按钮），这里纠正过来。
+        var reconciled = settings
+        if (meta != null && reconciled.fingerprintEnabled && !container.biometric.has(meta.id)) {
+            reconciled = reconciled.copy(fingerprintEnabled = false, biometricEnabled = false)
+            container.settings.settings = reconciled
+        }
+        val fingerprint = BiometricHelper.status(app)
+        // 指纹硬件损坏 / 录入被删时自动关掉指纹解锁：
+        // 否则设置页还要「先验证指纹才能关」，而传感器已经坏了，永远关不掉。
+        var fingerprintAutoDisabled = false
+        if (reconciled.fingerprintEnabled && (!fingerprint.available || !fingerprint.enrolled)) {
+            reconciled = reconciled.copy(fingerprintEnabled = false, biometricEnabled = false)
+            container.settings.settings = reconciled
+            meta?.let { container.biometric.clear(it.id) }
+            fingerprintAutoDisabled = true
+        }
+        _state.update {
+            it.copy(
+                initialized = true,
+                vaults = vaults,
+                settings = reconciled,
+                webDav = webDav,
+                activeMeta = meta,
+                screen = Screen.Unlock,
+                fingerprintAvailable = fingerprint.available,
+                biometricSaved = meta != null && container.biometric.has(meta.id),
+                message = if (fingerprintAutoDisabled) "指纹不可用，已自动关闭指纹解锁" else it.message
+            )
+        }
+        // 启动时查一次更新：等用户解锁到首页再查，避免更新框盖在解锁界面上。
+        launchUpdatePending = reconciled.checkUpdatesOnLaunch
     }
 
     // ---------------------------------------------------------------- vaults
@@ -1963,18 +1986,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openChangelog() {
         // 更新日志随包内置，离线也能查看，内容只包含功能介绍与问题修复。
-        val local = UpdateLog.load(getApplication())
+        // 内置文件写了几个版本就显示几个版本的时代结束了：这里和远端合并两条路径都截到上限，
+        // 否则 1.0.6 里内置日志有 7 版、设置里的「最多 5 版」形同虚设。
+        val local = UpdateLog.load(getApplication()).take(MAX_CHANGELOG_VERSIONS)
         _state.update {
             it.copy(changelog = local.ifEmpty { it.changelog }, showChangelog = true)
         }
-        // 云端最多 50 个版本，拉到后合并：按版本号倒序，未发版的本地条目自然排在最前。
+        // 云端同样只取最近若干版，合并后按版本号倒序，未发版的本地条目自然排在最前。
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 val remote = GitHubUpdater.releaseNotes(GitHubUpdater.fetchReleases(), limit = MAX_CHANGELOG_VERSIONS)
                 if (remote.isEmpty()) return@runCatching
                 val known = remote.map { it.version }.toSet()
                 val localOnly = local.filter { it.version.isNotBlank() && it.version !in known }
-                val merged = (localOnly + remote).sortedByDescending { versionRank(it.version) }
+                val merged = (localOnly + remote)
+                    .sortedByDescending { versionRank(it.version) }
+                    .take(MAX_CHANGELOG_VERSIONS)
                 _state.update { if (it.showChangelog) it.copy(changelog = merged) else it }
             }
         }
@@ -2273,6 +2300,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         /** 单个密码/秘密字段最多保留的历史值条数。 */
         const val MAX_FIELD_HISTORY = 20
+
+        /** 首次读取本机状态的尝试次数（Keystore 就绪前的失败多为瞬时）。 */
+        const val INIT_MAX_ATTEMPTS = 3
+        const val INIT_LOG_TAG = "AppViewModel"
     }
 
     /**

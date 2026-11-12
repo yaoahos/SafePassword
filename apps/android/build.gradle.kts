@@ -22,8 +22,8 @@ android {
         applicationId = "com.yaoahos.safepassword"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.0.6"
+        versionCode = 8
+        versionName = "1.0.7"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -111,12 +111,12 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("io.ktor:ktor-client-okhttp:3.0.3")
-    // 扫码录入动态验证码密钥：CameraX 取景 + ZXing 纯 Java 解码（体积小、无需反射规则）
+    // 扫码录入动态验证码密钥：CameraX 取景 + ZXing 纯 Java 解码（体积小、无需反射规则）。
+    // ZXing 依赖由 :core 以 api 方式导出（解码逻辑和单测都在 core 里）。
     implementation("androidx.camera:camera-core:1.4.1")
     implementation("androidx.camera:camera-camera2:1.4.1")
     implementation("androidx.camera:camera-lifecycle:1.4.1")
     implementation("androidx.camera:camera-view:1.4.1")
-    implementation("com.google.zxing:core:3.5.3")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

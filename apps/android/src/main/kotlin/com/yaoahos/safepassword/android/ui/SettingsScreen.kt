@@ -372,7 +372,9 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
                 )
                 SettingRow(
                     title = "锁定并清除内存中的主密码",
-                    subtitle = "回到解锁界面",
+                    // 不写「回到解锁界面」：部分机型上锁定后窗口会先退到桌面，
+                    // 写死界面去向会和实际观感对不上，这里只承诺「需要重新输入主密码」。
+                    subtitle = "需重新输入主密码",
                     onClick = { viewModel.lock() },
                     trailing = { Icon(Icons.Outlined.Lock, contentDescription = null) }
                 )

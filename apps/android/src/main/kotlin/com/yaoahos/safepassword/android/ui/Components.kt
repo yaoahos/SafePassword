@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,6 +26,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Badge
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -137,6 +139,35 @@ fun SectionCard(
             }
             content()
         }
+    }
+}
+
+/**
+ * 卡片内的「+ 新增」动作按钮（添加字段、新建标签等）。
+ *
+ * 全项目统一三件事：
+ * 1. 内容内边距为 0——图标的左边缘与卡片内容左边缘重合，不再比 chips/输入框缩进 8dp；
+ * 2. 行高固定 44dp——上方与下方留白一致，不会出现「上紧下松」；
+ * 3. 图标 18dp + 6dp 间距，与工具栏、菜单里的加法图标同一视觉尺度。
+ */
+@Composable
+fun CardAddAction(
+    text: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    TextButton(
+        onClick = onClick,
+        modifier = modifier.height(44.dp),
+        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+    ) {
+        Icon(
+            Icons.Outlined.Add,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(text)
     }
 }
 

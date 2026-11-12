@@ -224,14 +224,26 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                                                     .then(edgeBackModifier),
                                                 label = "overlay"
                                             ) { target ->
-                                                if (target != null) {
-                                                    // 每页铺一层不透明底色：页面根节点不一定自带背景，
-                                                    // 转场那 300ms 里透明部分会透出下层内容，出现残影。
-                                                    Box(
-                                                        Modifier
-                                                            .fillMaxSize()
-                                                            .background(MaterialTheme.colorScheme.background)
-                                                    ) {
+                                                // 每页铺一层不透明底色：页面根节点不一定自带背景，
+                                                // 转场那 300ms 里透明部分会透出下层内容，出现残影。
+                                                //
+                                                // target 为 null（回到标签页）时这里也要占满一屏：
+                                                // AnimatedContent 会对「目标内容的尺寸」做 SizeTransform
+                                                // 动画，目标内容为空就会被从全屏压到 0×0，
+                                                // 视觉上正是「返回时整页朝中间缩小一下」。尺寸恒定就只剩平移。
+                                                // 但空页不能带底色，否则会把下面的标签页盖住。
+                                                Box(
+                                                    Modifier
+                                                        .fillMaxSize()
+                                                        .then(
+                                                            if (target != null) {
+                                                                Modifier.background(MaterialTheme.colorScheme.background)
+                                                            } else {
+                                                                Modifier
+                                                            }
+                                                        )
+                                                ) {
+                                                    if (target != null) {
                                                         screenStateHolder.SaveableStateProvider(target.toString()) {
                                                             when (val screen = target) {
                                                                 Screen.Security -> SecurityScreen(viewModel, state)

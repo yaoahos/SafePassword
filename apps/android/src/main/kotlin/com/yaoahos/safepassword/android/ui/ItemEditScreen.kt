@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -382,15 +381,12 @@ fun ItemEditScreen(
                     )
                     fieldIndex++
                 }
-                Spacer(Modifier.height(8.dp))
+                // 字段之间、字段与「添加字段」之间统一 10dp：以前这里 8dp，
+                // 循环结束后又多叠了一个 8dp，导致按钮上方的行距是下方的两倍。
+                Spacer(Modifier.height(10.dp))
             }
 
-            Spacer(Modifier.height(8.dp))
-            TextButton(onClick = { showAddField = true }) {
-                Icon(Icons.Outlined.Add, contentDescription = null)
-                Spacer(Modifier.width(4.dp))
-                Text("添加字段")
-            }
+            CardAddAction(text = "添加字段") { showAddField = true }
 
             SectionCard(title = "标签") {
                 if (state.activeVault?.labels.isNullOrEmpty()) {
@@ -423,21 +419,10 @@ fun ItemEditScreen(
                         }
                     }
                 }
-                // 与上方标签 chip 左对齐：chip 的 leadingIcon 从 8dp 起，
-                // 这里把按钮的默认 12dp 内边距压到 8dp，图标再收到 18dp，
-                // 视觉上「+」的起点与标签圆点在同一条竖线上。
-                TextButton(
-                    onClick = { showLabel = true },
-                    contentPadding = PaddingValues(start = 8.dp, end = 12.dp, top = 0.dp, bottom = 0.dp)
-                ) {
-                    Icon(
-                        Icons.Outlined.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("新建标签")
-                }
+                // 与「添加字段」用同一个组件：图标左边缘与卡片内容左边缘对齐，
+                // 不再为了迁就 chip 圆点而额外缩进 8dp。
+                Spacer(Modifier.height(6.dp))
+                CardAddAction(text = "新建标签") { showLabel = true }
             }
 
             Row(
@@ -700,49 +685,21 @@ private fun EditorFieldBox(
                 modifier = Modifier.weight(1f)
             )
         } else {
-            // 动态验证码字段多一个扫码按钮：网站上给的密钥通常就是一张二维码。
-            val trailing: (@Composable () -> Unit)? = when {
-                field.type == FieldType.TOTP -> {
-                    {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = { scan = true },
-                                modifier = Modifier.size(34.dp)
-                            ) {
-                                Icon(
-                                    Icons.Outlined.QrCodeScanner,
-                                    contentDescription = "扫码录入密钥",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(19.dp)
-                                )
-                            }
-                            IconButton(
-                                onClick = { visible = !visible },
-                                modifier = Modifier.size(34.dp)
-                            ) {
-                                Icon(
-                                    if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                    contentDescription = if (visible) "隐藏密钥" else "显示密钥",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(19.dp)
-                                )
-                            }
-                        }
+            // 动态验证码不是密码：框内不放「查看」按钮（密钥仍按 masked 遮挡显示），
+            // 扫码入口移到右侧 ⋮ 菜单里，跟「生成密码」同一位置。
+            val trailing: (@Composable () -> Unit)? = if (field.type.masked && field.type != FieldType.TOTP) {
+                {
+                    IconButton(onClick = { visible = !visible }) {
+                        Icon(
+                            if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            contentDescription = if (visible) "隐藏密码" else "显示密码",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
-                field.type.masked -> {
-                    {
-                        IconButton(onClick = { visible = !visible }) {
-                            Icon(
-                                if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                contentDescription = if (visible) "隐藏密码" else "显示密码",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                }
-                else -> null
+            } else {
+                null
             }
             OutlinedTextField(
                 value = field.value,
@@ -850,7 +807,20 @@ private fun EditorFieldBox(
                             }
                         )
                     }
-                    if (field.type.masked) {
+                    if (field.type == FieldType.TOTP) {
+                        // 扫码入口：原来在输入框内，现在跟「生成密码」同一位置。
+                        DropdownMenuItem(
+                            text = { Text("扫码录入密钥") },
+                            leadingIcon = {
+                                Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
+                            },
+                            onClick = {
+                                menu = false
+                                scan = true
+                            }
+                        )
+                    } else if (field.type.masked) {
+                        // 只有密码/秘密才有「生成密码」：动态验证码字段要的是密钥，塞随机密码没有意义。
                         DropdownMenuItem(
                             text = { Text("生成密码") },
                             leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null) },
@@ -914,62 +884,6 @@ private fun fieldTypeIcon(type: FieldType): ImageVector = when (type) {
 private val FieldType.masked: Boolean
     get() = this == FieldType.PASSWORD || this == FieldType.SECRET || this == FieldType.TOTP
 
-@Composable
-private fun FieldEditor(
-    field: Field,
-    onChange: (Field) -> Unit,
-    onDelete: () -> Unit,
-    onGenerate: () -> Unit
-) {
-    var visible by remember(field.id) { mutableStateOf(false) }
-    val context = LocalContext.current
-    OutlinedTextField(
-        value = field.value,
-        onValueChange = { onChange(field.copy(value = it)) },
-        label = { Text(field.label) },
-        singleLine = field.type != FieldType.MULTILINE,
-        minLines = if (field.type == FieldType.MULTILINE) 3 else 1,
-        modifier = Modifier.fillMaxWidth(),
-        visualTransformation = if (field.type.masked && !visible) {
-            PasswordVisualTransformation()
-        } else {
-            VisualTransformation.None
-        },
-        keyboardOptions = when {
-            field.type.masked -> KeyboardOptions(
-                keyboardType = KeyboardType.Password,
-                autoCorrectEnabled = false
-            )
-            field.type == FieldType.EMAIL -> KeyboardOptions(keyboardType = KeyboardType.Email)
-            field.type == FieldType.PHONE -> KeyboardOptions(keyboardType = KeyboardType.Phone)
-            field.type == FieldType.URL -> KeyboardOptions(keyboardType = KeyboardType.Uri)
-            else -> KeyboardOptions.Default
-        },
-        trailingIcon = {
-            Row {
-                if (field.value.isNotBlank()) {
-                    IconButton(onClick = { ClipboardHelper.copySensitive(context, field.value) }) {
-                        Icon(Icons.Outlined.ContentCopy, contentDescription = "复制")
-                    }
-                }
-                if (field.type.masked) {
-                    IconButton(onClick = { visible = !visible }) {
-                        Icon(
-                            if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                            contentDescription = "显示/隐藏"
-                        )
-                    }
-                    IconButton(onClick = onGenerate) {
-                        Icon(Icons.Outlined.Add, contentDescription = "生成密码")
-                    }
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Outlined.Delete, contentDescription = "删除字段")
-                }
-            }
-        }
-    )
-}
 
 /** 文件字段的选择框：未选时点按选文件，已选时显示文件名与大小。 */
 @Composable
