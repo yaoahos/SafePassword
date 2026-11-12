@@ -851,7 +851,17 @@ fun ItemIcon(item: VaultItem, size: Dp = 46.dp, corner: Dp = 13.dp, load: Boolea
     }
 }
 
-private val iconBitmapCache = object : LruCache<String, ImageBitmap>(64) {}
+/**
+ * 图标解码上限：就是存储边长，不额外降采样。
+ *
+ * 原来这里卡 128，而存储是 192——`inSampleSize` 只能取 2 的幂，
+ * 192 超过 128 就只能取 2，实际解出 96px，比存 128 时（不降采样解 128）还糊。
+ * 也就是「存 192」的清晰度好处一直没吃到。放宽到 192 后解出原尺寸，
+ * 内存代价是 192²×4 ≈ 147KB/张，所以缓存从 64 张收到 32 张（约 4.7MB）。
+ */
+private const val ICON_DECODE_LIMIT = 192
+
+private val iconBitmapCache = object : LruCache<String, ImageBitmap>(32) {}
 
 private fun iconCacheKey(raw: String): String = "${raw.length}:${raw.hashCode()}"
 
@@ -873,7 +883,7 @@ private fun decodeIconData(raw: String): ImageBitmap? {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
             var sample = 1
-            while (bounds.outWidth / sample > 128 || bounds.outHeight / sample > 128) {
+            while (bounds.outWidth / sample > ICON_DECODE_LIMIT || bounds.outHeight / sample > ICON_DECODE_LIMIT) {
                 sample *= 2
             }
             val options = BitmapFactory.Options().apply { inSampleSize = sample }

@@ -113,7 +113,12 @@ data class VaultItem(
     var attachments: MutableList<AttachmentRef> = mutableListOf(),
     /** Preset icon id: letter / key / card / chat / work / custom. Empty = template default. */
     var iconKey: String = "",
-    /** Base64 encoded square PNG used when [iconKey] == "custom". */
+    /**
+     * 裸 base64 的方形图标，[iconKey] == "custom" 时使用。
+     *
+     * 格式不固定：图形类存 PNG、照片类存 WebP（编码时按体积择优，见 IconCodec）。
+     * 读取侧一律交给 `BitmapFactory` / 浏览器按魔数识别，不要假定扩展名。
+     */
     var iconData: String = ""
 ) {
     val primaryPassword: String?
