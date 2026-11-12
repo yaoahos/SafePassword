@@ -3,8 +3,6 @@ package com.yaoahos.safepassword.android.ui
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import android.util.Base64
@@ -15,7 +13,7 @@ import java.io.ByteArrayOutputStream
 /**
  * 条目图标归一化：把任意图片收敛成统一的裸 base64（PNG 或 WebP，按体积择优）。
  *
- * 规则见 [planIcon]（正方形居中裁切、长条等比留白、不放大、按 2 的幂降采样）。
+ * 规则见 [planIcon]（一律居中裁成正方形、不放大、按 2 的幂降采样）。
  * 这里只负责按计划做 Bitmap 操作，两条写入路径共用：
  * - 用户手动选图：[encodeIcon]
  * - 外部卡片导入：[normalizeIconData]
@@ -65,7 +63,7 @@ internal object IconCodec {
         return render(bytes, TARGET) ?: clean
     }
 
-    /** 解码 → 裁切/留白 → 择优编码 → base64；任何一步失败返回 null。 */
+    /** 解码 → 居中裁成正方形 → 择优编码 → base64；任何一步失败返回 null。 */
     private fun render(source: ByteArray, target: Int): String? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(source, 0, source.size, bounds)
@@ -90,23 +88,11 @@ internal object IconCodec {
             Bitmap.createBitmap(decoded, plan.cropX, plan.cropY, plan.cropW, plan.cropH)
         }
 
-        val output = if (plan.letterbox) {
-            // 留白：正方形透明画布，内容居中。
-            val canvasBitmap = Bitmap.createBitmap(plan.size, plan.size, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(canvasBitmap)
-            val scaled = Bitmap.createScaledBitmap(cropped, plan.outW, plan.outH, true)
-            canvas.drawBitmap(
-                scaled,
-                (plan.size - plan.outW) / 2f,
-                (plan.size - plan.outH) / 2f,
-                Paint(Paint.FILTER_BITMAP_FLAG)
-            )
-            if (scaled !== cropped) scaled.recycle()
-            canvasBitmap
-        } else if (plan.outW == cropped.width && plan.outH == cropped.height) {
+        // 裁出来的矩形恒为正方形，缩到目标边长后整张画布被内容填满，不留透明边。
+        val output = if (plan.size == cropped.width && plan.size == cropped.height) {
             cropped
         } else {
-            Bitmap.createScaledBitmap(cropped, plan.outW, plan.outH, true)
+            Bitmap.createScaledBitmap(cropped, plan.size, plan.size, true)
         }
 
         val encoded = encodeSmallest(output)

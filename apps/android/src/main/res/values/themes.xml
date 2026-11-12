@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.SafePassword" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <!-- 平台主题即可：界面全由 Compose 绘制，不再继承 AppCompat 主题，
+         避免 AppCompatDelegate 的 DayNight 同步在冷启动时重建 Activity。 -->
+    <style name="Theme.SafePassword" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>

@@ -22,8 +22,8 @@ android {
         applicationId = "com.yaoahos.safepassword"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "1.0.10"
+        versionCode = 12
+        versionName = "1.0.11"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -101,7 +101,11 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.appcompat:appcompat:1.7.0")
+    // 不再依赖 appcompat：Activity 基类用 FragmentActivity，主题用平台 Material，
+    // 避免 AppCompatDelegate.applyDayNight() 在冷启动时触发 recreate()。
+    // fragment 必须显式给 ≥1.3.0：registerForActivityResult 依赖它的 onRequestPermissionsResult
+    // 转发（以前由 appcompat 传递依赖兜着，移除后会解析到旧版本并触发 lintVital 报错）。
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
