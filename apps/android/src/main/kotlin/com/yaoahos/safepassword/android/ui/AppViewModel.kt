@@ -741,6 +741,49 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * 临时入口：把当前密码库里已有的自定义图标按统一规则重新编码一遍。
+     *
+     * 归一化只在「写入图标」时生效，老库里 256px 的图不会自己变小；这里提供一次性压缩。
+     * 只处理当前打开的密码库（其它库没有主密码打不开），切换密码库再点一次即可。
+     *
+     * 用完之后可以整块删掉：本函数 + `SettingsScreen` 里标注「临时入口」那一行与对话框。
+     */
+    fun compactIcons() {
+        val session = active ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                var changed = 0
+                var beforeChars = 0L
+                var afterChars = 0L
+                session.vault.items.forEach { item ->
+                    if (item.iconData.isBlank()) return@forEach
+                    val compacted = IconCodec.normalizeIconData(item.iconData)
+                    if (compacted == item.iconData) return@forEach
+                    beforeChars += item.iconData.length
+                    afterChars += compacted.length
+                    item.iconData = compacted
+                    item.updatedAt = now()
+                    changed++
+                }
+                if (changed == 0) {
+                    _state.update { it.copy(message = "图标已是统一规格，无需压缩") }
+                    return@launch
+                }
+                session.vault.touch()
+                persist()
+                // base64 字符数与字节数同量级，按 1024 折算即可，不必精确到字节。
+                val savedKb = maxOf(0L, (beforeChars - afterChars) / 1024)
+                _state.update {
+                    it.copy(message = "已压缩 $changed 个图标，省下约 $savedKb KB")
+                }
+                scheduleSync()
+            } catch (e: Exception) {
+                fail(e)
+            }
+        }
+    }
+
     fun emptyTrash() {
         val session = active ?: return
         viewModelScope.launch(Dispatchers.IO) {

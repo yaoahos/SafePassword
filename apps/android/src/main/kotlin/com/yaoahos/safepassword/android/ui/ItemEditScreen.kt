@@ -1,8 +1,6 @@
 package com.yaoahos.safepassword.android.ui
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Base64
@@ -118,7 +116,6 @@ import com.yaoahos.safepassword.core.security.GeneratorOptions
 import com.yaoahos.safepassword.core.security.PasswordGenerator
 import com.yaoahos.safepassword.core.security.PasswordStrength
 import com.yaoahos.safepassword.core.security.Totp
-import java.io.ByteArrayOutputStream
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -181,7 +178,7 @@ fun ItemEditScreen(
 
     val iconPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
-            encodeIcon(context, uri)
+            IconCodec.encodeIcon(context, uri)
                 .onSuccess { encoded ->
                     item = item.copy(iconKey = "custom", iconData = encoded)
                 }
@@ -1253,29 +1250,6 @@ private fun VaultItem.withUrlBeforeAccount(): VaultItem {
     val urlField = fields.removeAt(urlIndex)
     fields.add(accountIndex, urlField)
     return this
-}
-
-private fun encodeIcon(context: Context, uri: Uri): Result<String> {
-    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-        ?: return Result.failure(IllegalArgumentException("无法读取图片"))
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-        return Result.failure(IllegalArgumentException("图片尺寸无效"))
-    }
-    if (bounds.outWidth != bounds.outHeight) {
-        return Result.failure(IllegalArgumentException("图片必须为正方形（宽高像素一致）"))
-    }
-    if (bounds.outWidth > 256 || bounds.outHeight > 256) {
-        return Result.failure(IllegalArgumentException("图片尺寸不能超过 256×256 像素"))
-    }
-    val original = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-        ?: return Result.failure(IllegalArgumentException("无法读取图片"))
-    val output = ByteArrayOutputStream()
-    if (!original.compress(Bitmap.CompressFormat.PNG, 100, output)) {
-        return Result.failure(IllegalArgumentException("无法压缩图片"))
-    }
-    return Result.success(Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP))
 }
 
 private fun VaultItem.deepCopy(): VaultItem = copy(

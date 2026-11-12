@@ -1,13 +1,9 @@
 package com.yaoahos.safepassword.android.ui
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.util.Base64
 import com.yaoahos.safepassword.core.io.XmlCard
 import com.yaoahos.safepassword.core.model.Label
 import com.yaoahos.safepassword.core.model.Vault
 import com.yaoahos.safepassword.core.model.newId
-import java.io.ByteArrayOutputStream
 
 /**
  * 与 ViewModel 状态无关的纯变换。
@@ -16,51 +12,13 @@ import java.io.ByteArrayOutputStream
  * 也让 AppViewModel 只保留状态编排职责。
  */
 
-/** 把外部文件名收敛成本机安全的名字。 */
-/** 把导入的 base64 图标压到 128px PNG，避免密码库被图标撑大。 */
-internal fun compactIconData(raw: String): String {
-    if (raw.isBlank()) return ""
-    val clean = raw.substringAfter("base64,", raw).filterNot { it.isWhitespace() }
-    if (clean.isBlank()) return ""
-    return runCatching {
-        val bytes = Base64.decode(clean, Base64.DEFAULT)
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching clean
-        var sample = 1
-        while (bounds.outWidth / sample > 256 || bounds.outHeight / sample > 256) {
-            sample *= 2
-        }
-        val bitmap = BitmapFactory.decodeByteArray(
-            bytes,
-            0,
-            bytes.size,
-            BitmapFactory.Options().apply { inSampleSize = sample }
-        ) ?: return@runCatching clean
-        val scaled = if (bitmap.width > 128 || bitmap.height > 128) {
-            Bitmap.createScaledBitmap(bitmap, 128, 128, true)
-        } else {
-            bitmap
-        }
-        val output = ByteArrayOutputStream()
-        val compressed = scaled.compress(Bitmap.CompressFormat.PNG, 100, output)
-        if (scaled !== bitmap) scaled.recycle()
-        bitmap.recycle()
-        if (!compressed || output.size() == 0) {
-            clean
-        } else {
-            val encoded = Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
-            val probe = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(
-                Base64.decode(encoded, Base64.DEFAULT),
-                0,
-                Base64.decode(encoded, Base64.DEFAULT).size,
-                probe
-            )
-            if (probe.outWidth > 0 && probe.outHeight > 0) encoded else clean
-        }
-    }.getOrDefault(clean)
-}
+/**
+ * 把导入的图标按统一规则归一化，与用户手动选图走同一套逻辑（见 [IconCodec]）。
+ *
+ * 旧实现会把任意比例的图强行拉成 128×128，导入长条 logo 会变形；现在改成
+ * 4:3 以内居中裁切、超出范围等比留白，目标 192px，体积超限再降 128。
+ */
+internal fun compactIconData(raw: String): String = IconCodec.normalizeIconData(raw)
 
 /** 把兼容格式的 XML 卡片并入密码库，返回 (新增条目数, 新增标签数)。 */
 internal fun mergeXmlCards(vault: Vault, cards: List<XmlCard>): Pair<Int, Int> {

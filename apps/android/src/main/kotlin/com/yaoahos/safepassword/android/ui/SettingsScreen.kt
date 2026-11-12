@@ -116,6 +116,8 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
     ) { uri -> if (uri != null) viewModel.exportEncrypted(uri) }
     // JSON / CSV / XML 都是明文（含全部密码），导出前先确认一次，避免手滑。
     var pendingPlainExport by remember { mutableStateOf<(() -> Unit)?>(null) }
+    // 临时入口：压缩已有图标。用完连同 AppViewModel.compactIcons 一起删掉。
+    var showCompactIcons by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -277,6 +279,12 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
                     subtitle = state.activeMeta?.name.orEmpty(),
                     onClick = { showRename = true }
                 )
+                // 临时入口：一次性把老图标压成新规格，用完可删。
+                SettingRow(
+                    title = "压缩已有图标",
+                    subtitle = "按新规格重新编码当前密码库的图标",
+                    onClick = { showCompactIcons = true }
+                )
             }
 
             SectionCard(title = "显示与搜索") {
@@ -394,6 +402,22 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
             onConfirm = {
                 pendingPlainExport = null
                 action()
+            }
+        )
+    }
+
+    // 临时入口：压缩已有图标。
+    if (showCompactIcons) {
+        ConfirmDialog(
+            title = "压缩已有图标？",
+            text = "会把当前密码库里所有自定义图标按新规格（正方形 192px）重新编码，" +
+                "尺寸和体积都会变小，画质无损。条目的修改时间会更新，并触发一次同步。\n\n" +
+                "只处理当前密码库；其它密码库切换过去再点一次即可。",
+            confirmText = "开始压缩",
+            onDismiss = { showCompactIcons = false },
+            onConfirm = {
+                showCompactIcons = false
+                viewModel.compactIcons()
             }
         )
     }
