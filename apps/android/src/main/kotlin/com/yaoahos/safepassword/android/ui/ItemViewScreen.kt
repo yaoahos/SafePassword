@@ -518,7 +518,9 @@ private fun FieldRow(
     val isPassword = field.type == FieldType.PASSWORD
     val isSecret = field.type == FieldType.SECRET
     val isTotp = field.type == FieldType.TOTP
-    val masked = isPassword || isSecret || isTotp
+    // 动态验证码不在遮挡之列：它显示的是实时生成的 6 位码，不是密码，
+    // 既不需要眼睛按钮，也不该默认藏起来。
+    val masked = isPassword || isSecret
     val isUrl = field.type == FieldType.URL
     val isFile = field.type == FieldType.FILE
     val value = field.value
@@ -569,9 +571,10 @@ private fun FieldRow(
             if (fileBytes == null) name
             else "$name · ${formatFileBytes(fileBytes.size)}"
         }
-        value.isBlank() -> "—"
-        // TOTP 未揭示时显示当前动态码（6 位中间加空格），揭示后显示密钥原文。
-        isTotp && !revealed -> {
+        // 空字段直接留空，不再用一个破折号占位。
+        value.isBlank() -> ""
+        // 动态验证码直接显示当前 6 位码（中间加空格便于分组阅读）。
+        isTotp -> {
             val code = totpCode ?: "密钥无效"
             if (code.length == 6) code.substring(0, 3) + " " + code.substring(3) else code
         }
@@ -656,7 +659,7 @@ private fun FieldRow(
             color = if (value.isBlank() && !isFile) MaterialTheme.colorScheme.onSurfaceVariant
             else MaterialTheme.colorScheme.onSurface
         )
-        if (isTotp && totpCode != null && !revealed) {
+        if (isTotp && totpCode != null) {
             Row(
                 modifier = Modifier.padding(top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically

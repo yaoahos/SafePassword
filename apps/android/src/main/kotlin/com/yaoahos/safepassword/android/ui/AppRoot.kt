@@ -60,9 +60,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material3.Icon
@@ -81,6 +86,22 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
     // 否则 AnimatedVisibility 会直接消失而不是滑出。
     var lastShown by remember { mutableStateOf<NoticeItem?>(null) }
     val screenStateHolder = rememberSaveableStateHolder()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    // 超时锁定：解锁后（或改了超时时间）启动前台闲置计时。
+    LaunchedEffect(state.unlocked, state.settings.autoLockSeconds) {
+        if (state.unlocked) viewModel.restartIdleWatch()
+    }
+
+    // 进入详情/编辑/设置等覆盖页时收起输入法。
+    // 以前在搜索结果里点条目打开详情，搜索框仍持有焦点，键盘会一直挂在详情页下面。
+    LaunchedEffect(state.screen) {
+        if (state.screen != Screen.Vault && state.screen != Screen.Tools) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+        }
+    }
 
     LaunchedEffect(state.settings.screenshotAllowed) {
         activity.setSecure(!state.settings.screenshotAllowed)
@@ -129,8 +150,56 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= 600.dp
+            // 左边缘右滑返回：只在「覆盖层页面」上生效，标签页不拦截。
+            // 判定放在根节点、并在手指按下那一刻就判起手位置——以前放在 AnimatedContent 上、
+            // 用 detectHorizontalDragGestures 的 onDragStart（越过 touch slop 之后才回调），
+            // 拿到的 x 已经往右偏了一个 slop，20dp 的边条实际只剩几个 dp 可用，
+            // 于是「第一次滑没反应、再来一次才回去」。
+            val canEdgeBack = state.screen != Screen.Vault &&
+                state.screen != Screen.Tools &&
+                state.screen != Screen.Unlock
+            val canEdgeBackState = rememberUpdatedState(canEdgeBack)
             CompositionLocalProvider(LocalWideLayout provides wide) {
-                Box(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        // 任何触摸都算「用户还在用」，前台闲置超时据此重新计时。
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    awaitPointerEvent(PointerEventPass.Initial)
+                                    viewModel.onUserInteraction()
+                                }
+                            }
+                        }
+                        .pointerInput(Unit) {
+                            val edgePx = PageMotion.EDGE_DP.dp.toPx()
+                            val commitPx = size.width * PageMotion.COMMIT_RATIO
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                if (!canEdgeBackState.value || down.position.x > edgePx) {
+                                    return@awaitEachGesture
+                                }
+                                val slop = viewConfiguration.touchSlop
+                                var dragged = 0f
+                                var claimed = false
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes
+                                        .firstOrNull { it.id == down.id } ?: break
+                                    if (!change.pressed) break
+                                    dragged = change.position.x - down.position.x
+                                    val dy = change.position.y - down.position.y
+                                    // 横向位移明显大于纵向才算「右滑」，纵向滑动交给列表滚动。
+                                    if (!claimed && dragged > slop && dragged > kotlin.math.abs(dy)) {
+                                        claimed = true
+                                    }
+                                    if (claimed) change.consume()
+                                }
+                                if (claimed && dragged >= commitPx) viewModel.goBack()
+                            }
+                        }
+                ) {
                 Scaffold(
                     contentWindowInsets = WindowInsets(0),
                     snackbarHost = {}
@@ -170,44 +239,6 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                                         }
                                     } else {
                                         Box(Modifier.fillMaxSize()) {
-                                            // 左边缘右滑返回：从屏幕最左侧 20dp 内起手，
-                                            // 位移超过 30% 页宽才提交，避免误触。
-                                            val canEdgeBack = state.screen != Screen.Vault &&
-                                                state.screen != Screen.Tools
-                                            val edgeBackModifier = if (canEdgeBack) {
-                                                Modifier.pointerInput(state.screen) {
-                                                    val edgePx = PageMotion.EDGE_DP.dp.toPx()
-                                                    val commitPx = size.width * PageMotion.COMMIT_RATIO
-                                                    var armed = false
-                                                    var dragged = 0f
-                                                    detectHorizontalDragGestures(
-                                                        onDragStart = { offset ->
-                                                            armed = offset.x <= edgePx
-                                                            dragged = 0f
-                                                        },
-                                                        onDragCancel = {
-                                                            armed = false
-                                                            dragged = 0f
-                                                        },
-                                                        onDragEnd = {
-                                                            if (armed && dragged >= commitPx) {
-                                                                viewModel.goBack()
-                                                            }
-                                                            armed = false
-                                                            dragged = 0f
-                                                        },
-                                                        onHorizontalDrag = { change, amount ->
-                                                            if (armed) {
-                                                                dragged += amount
-                                                                // 只消费向右的位移，向左交还给下层（避免吃掉点击/滚动）。
-                                                                if (dragged > 0f) change.consume()
-                                                            }
-                                                        }
-                                                    )
-                                                }
-                                            } else {
-                                                Modifier
-                                            }
                                             MainTabShell(viewModel, state, screenStateHolder)
                                             AnimatedContent(
                                                 targetState = state.screen
@@ -220,8 +251,7 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                                                 },
                                                 modifier = Modifier
                                                     .fillMaxSize()
-                                                    .clipToBounds()
-                                                    .then(edgeBackModifier),
+                                                    .clipToBounds(),
                                                 label = "overlay"
                                             ) { target ->
                                                 // 每页铺一层不透明底色：页面根节点不一定自带背景，
