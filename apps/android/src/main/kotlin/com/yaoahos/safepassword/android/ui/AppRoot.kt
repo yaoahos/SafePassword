@@ -132,12 +132,17 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
         if (currentNotice != null) lastShown = currentNotice
     }
 
-    BackHandler(
-        enabled = state.screen != Screen.Unlock &&
-            state.screen != Screen.Vault &&
-            state.screen != Screen.Tools
-    ) {
-        viewModel.goBack()
+    // 解锁页拦截返回键：不禁用的话系统默认 back = finish Activity，表现是「锁定了却退回桌面」。
+    // 锁定状态下按返回留在解锁页，防止误触退出。
+    if (state.screen == Screen.Unlock) {
+        BackHandler(enabled = true) { /* 锁定页不响应返回 */ }
+    } else {
+        BackHandler(
+            enabled = state.screen != Screen.Vault &&
+                state.screen != Screen.Tools
+        ) {
+            viewModel.goBack()
+        }
     }
 
     SafePasswordTheme(
@@ -217,29 +222,15 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                         ) {
                             if (!state.initialized) {
                                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            } else if (state.screen == Screen.Unlock) {
+                                // 直接切换不用 AnimatedContent：转场动画期间窗口大面积重绘，
+                                // MIUI 可能误判为应用卡死/泄漏而杀进程（表现为「锁定后闪到桌面」）。
+                                screenStateHolder.SaveableStateProvider("Unlock") {
+                                    UnlockScreen(viewModel, state, activity)
+                                }
                             } else {
-                                // 锁定界面与应用层整体做淡入淡出；解锁后的结构是：
-                                // 常驻 tab 壳层（顶栏/底栏固定）+ 随层级滑入滑出的下层页面覆盖层。
-                                AnimatedContent(
-                                    targetState = state.screen == Screen.Unlock,
-                                    transitionSpec = {
-                                        (
-                                            fadeIn(tween(240, easing = FastOutSlowInEasing)) +
-                                                scaleIn(
-                                                    initialScale = 0.98f,
-                                                    animationSpec = tween(260, easing = FastOutSlowInEasing)
-                                                )
-                                            ) togetherWith fadeOut(tween(160, easing = FastOutSlowInEasing))
-                                    },
-                                    label = "lock-gate"
-                                ) { unlocking ->
-                                    if (unlocking) {
-                                        screenStateHolder.SaveableStateProvider("Unlock") {
-                                            UnlockScreen(viewModel, state, activity)
-                                        }
-                                    } else {
-                                        Box(Modifier.fillMaxSize()) {
-                                            MainTabShell(viewModel, state, screenStateHolder)
+                                Box(Modifier.fillMaxSize()) {
+                                    MainTabShell(viewModel, state, screenStateHolder)
                                             AnimatedContent(
                                                 targetState = state.screen
                                                     .takeIf { it != Screen.Vault && it != Screen.Tools },
@@ -295,12 +286,10 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
                                             }
                                         }
                                     }
-                                }
                                 if (state.busy) {
                                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                                 }
                             }
-                        }
                     }
                 }
 

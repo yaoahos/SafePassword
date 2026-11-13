@@ -922,11 +922,11 @@ private fun FileFieldBox(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
+                .heightIn(min = 72.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .border(1.dp, Color.Black, RoundedCornerShape(12.dp))
                 .clickable(onClick = onPick)
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(

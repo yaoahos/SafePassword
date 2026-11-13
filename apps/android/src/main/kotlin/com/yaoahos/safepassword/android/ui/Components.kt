@@ -450,6 +450,9 @@ fun InputDialog(
             modifier = modifier
                 .padding(horizontal = 22.dp)
                 .fillMaxWidth()
+                // 双重约束：限高 80% 屏高（给键盘留够空间）+ 内容区绝对上限 420dp。
+                // 以前只限 85% 屏高，键盘弹出后 imePadding 挤压可用空间，按钮仍可能被推到屏外。
+                .fillMaxHeight(fraction = 0.80f)
         ) {
             Column(
                 Modifier
@@ -461,7 +464,7 @@ fun InputDialog(
                 Spacer(Modifier.height(14.dp))
                 Column(
                     Modifier
-                        .weight(1f, fill = false)
+                        .weight(1f, fill = true)
                         .heightIn(max = 420.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
