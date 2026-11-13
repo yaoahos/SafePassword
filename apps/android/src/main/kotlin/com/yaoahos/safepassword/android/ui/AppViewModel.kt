@@ -503,9 +503,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 // 删库后自动切到另一个本来就有指纹的库时，开关保持开启，不需要重新验证。
                 container.vaultStore.delete(meta)
                 container.biometric.clear(meta.id)
-                // 云端那份一起删，否则另一台设备下次同步会把本地副本重新传上去，
-                // 本地与云端就成了两个互不相干的分支。
-                val cloudRemoved = runCatching { deleteCloudCopy(meta.cloudKey) }.isSuccess
+                // 只删本地，云端副本保留：删除云端要走「云端密码库」里那个独立的删除按钮。
+                // 这样误删还有救（重新下载即可），也不会因为删本地把别处的库一起带走。
+                val cloudKept = meta.cloudKey.isNotBlank()
                 val remaining = container.vaultStore.list()
                 val next = remaining.firstOrNull()
                 val saved = applyFingerprintState(next?.id)
@@ -522,7 +522,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             vaults = remaining,
                             settings = container.settings.settings,
                             biometricSaved = saved,
-                            message = if (cloudRemoved) "密码库已删除，云端副本也已删除" else "密码库已删除"
+                            message = if (cloudKept) "密码库已删除（云端副本保留）" else "密码库已删除"
                         )
                     }
                 } else {
@@ -531,7 +531,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             vaults = remaining,
                             settings = container.settings.settings,
                             biometricSaved = saved,
-                            message = if (cloudRemoved) "密码库已删除，云端副本也已删除" else "密码库已删除"
+                            message = if (cloudKept) "密码库已删除（云端副本保留）" else "密码库已删除"
                         )
                     }
                 }
@@ -2075,43 +2075,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun dismissChangelog() = _state.update { it.copy(showChangelog = false) }
 
     fun dismissFingerprintPrompt() = _state.update { it.copy(fingerprintPrompt = false) }
-
-    /** 删除云端的某个密码库文件，并把清单里的条目一并去掉。 */
-    /**
-     * 删除云端那份密码库文件并把它从清单里摘掉。
-     *
-     * 只在本地删库时调用：本地和云端必须一起消失，否则另一台设备会把
-     * 本地副本当成「云端还没有」重新上传，两边就分叉了。
-     */
-    private suspend fun deleteCloudCopy(cloudKey: String) {
-        val config = _state.value.webDav
-        if (!config.isConfigured()) return
-        val client = WebDavClient(config, OkHttp.create())
-        try {
-            client.test()
-            val manifest = CloudManifest.parse(
-                client.get(config.manifestPath())?.toString(Charsets.UTF_8)
-            )
-            // 只认内容密钥派生的键：按名字去猜会误删别的同名库。
-            // 键为空说明这个库从没同步过，云端本来就没有它的副本。
-            val key = cloudKey
-            if (key.isNotBlank()) {
-                client.delete(config.remotePath(key))
-            }
-            // 与桌面端一致：删文件 + 从清单摘掉条目（不做墓碑）。
-            // 另一台设备据此得到「清单里没有、云端也没有」→ 判为已删除并弹窗询问。
-            val victim = if (key != null) manifest.vaults.firstOrNull { it.key == key } else null
-            if (victim != null) {
-                manifest.remove(victim.key)
-                client.put(
-                    config.manifestPath(),
-                    manifest.toJson().toByteArray(Charsets.UTF_8)
-                )
-            }
-        } finally {
-            client.close()
-        }
-    }
 
     /** 改名后同步云端清单里的显示名（云端文件名用的是 cloudKey，不会变）。 */
     private suspend fun renameCloudEntry(cloudKey: String, newName: String) {
