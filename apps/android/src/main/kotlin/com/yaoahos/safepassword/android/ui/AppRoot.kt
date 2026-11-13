@@ -132,11 +132,12 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
         if (currentNotice != null) lastShown = currentNotice
     }
 
-    // 解锁页拦截返回键：不禁用的话系统默认 back = finish Activity，表现是「锁定了却退回桌面」。
-    // 锁定状态下按返回留在解锁页，防止误触退出。
-    if (state.screen == Screen.Unlock) {
-        BackHandler(enabled = true) { /* 锁定页不响应返回 */ }
-    } else {
+    // 解锁页不注册 BackHandler：系统返回（含屏幕左缘右滑手势）走 Activity 默认行为 = 退出到桌面。
+    // 1.0.13 时这里注册了一个空的 BackHandler 来「防误触」，结果返回键与侧滑手势全部变成无反应，
+    // 解锁页只剩 Home 键能离开。锁定状态下密码库已加密落盘、内存密钥已清除，退出应用不会泄密，
+    // 重新打开仍要解锁——所以这里放行，让侧滑返回和系统返回键都能正常退出。
+    // 注意：解锁页的「返回上一页」语义不存在（没有上一页），自定义边缘手势也不接管（见 canEdgeBack）。
+    if (state.screen != Screen.Unlock) {
         BackHandler(
             enabled = state.screen != Screen.Vault &&
                 state.screen != Screen.Tools
