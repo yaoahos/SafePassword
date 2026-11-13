@@ -285,9 +285,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         screen = back?.screen ?: Screen.Vault,
                         backStack = back?.backStack ?: emptyList(),
                         busy = false,
-                        filterLabelId = back?.filterLabelId ?: defaultLabelIdFor(opened.vault),
-                        // 换库时清掉上一个库的搜索词与「只看收藏」，
-                        // 否则新库首页会莫名其妙是 0 条。
+                        // back 非空时用 back.filterLabelId（null 表示「无标签筛选」也是合法状态）；
+                        // 只有全新解锁（back == null）才用默认标签。以前用 elvis 统一兜底，
+                        // 导致「锁定时没选标签、解锁后被塞了默认标签」。
+                        filterLabelId = if (back != null) back.filterLabelId else defaultLabelIdFor(opened.vault),
                         search = back?.search ?: "",
                         onlyFavorites = back?.onlyFavorites ?: false,
                         security = SecurityAnalyzer.analyze(opened.vault),
@@ -2290,7 +2291,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // ---------------------------------------------------------------- lifecycle
 
     fun onAppBackgrounded() {
-        if (_state.value.unlocked) backgroundAt = SystemClock.elapsedRealtime()
+        if (!_state.value.unlocked) return
+        val timeout = _state.value.settings.autoLockSeconds
+        if (timeout == 0) {
+            // 「切到后台立即锁定」：退到后台那一刻就锁，不等回前台。
+            // 以前只记 backgroundAt、回前台才判超时，表现是「设了立即锁但后台没锁」。
+            lock()
+        } else {
+            backgroundAt = SystemClock.elapsedRealtime()
+        }
     }
 
     fun onAppForegrounded() {
@@ -2301,7 +2310,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         lastInteractionAt = SystemClock.elapsedRealtime()
         if (at <= 0 || !_state.value.unlocked) return
         val timeout = _state.value.settings.autoLockSeconds
-        if (timeout >= 0 && SystemClock.elapsedRealtime() - at >= timeout * 1000L) {
+        // timeout == 0 时 onAppBackgrounded 已直接 lock()，这里不再重复判；
+        // 否则 timeout >= 0 对 0 恒真，backgroundAt 残留时会误锁。
+        if (timeout > 0 && SystemClock.elapsedRealtime() - at >= timeout * 1000L) {
             lock()
         } else if (_state.value.nameConflictPending) {
             // 同名库冲突未解决：每次回到前台都再试一次，让提示重新出现。
