@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -14,7 +15,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.yaoahos.safepassword.android.update.ReleaseNote
 import com.yaoahos.safepassword.android.update.UpdateInfo
 
@@ -116,8 +119,13 @@ fun ChangelogDialog(
                             note.date.takeIf { it.isNotBlank() },
                             note.version.takeIf { it.isNotBlank() }?.let { "v$it" }
                         ).joinToString("    ").ifBlank { "更新" }
-                        Text(heading, style = MaterialTheme.typography.titleSmall)
-                        Spacer(Modifier.height(6.dp))
+                        // 标题加粗、14sp，与 MyFileBox 的更新日志对话框保持一致。
+                        Text(
+                            heading,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
                         // 完整显示，不再只截前几条。
                         val bullets = conciseNotes(note.notes, limit = Int.MAX_VALUE)
                         if (bullets.isEmpty()) {
