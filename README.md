@@ -4,7 +4,7 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 - 项目名：`SafePassword`
 - 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.1.1`（versionCode 16）
+- 正式版本：`1.1.1`（versionCode 16；已构建并验签，尚未发布）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
 - 正式 APK：`SafePassword-1.1.1-release.apk`
