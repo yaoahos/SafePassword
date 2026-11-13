@@ -375,7 +375,8 @@ fun ItemEditScreen(
                         onGenerate = {
                             generatorTarget = index
                             showGenerator = true
-                        }
+                        },
+                        onNotice = { viewModel.showMessage(it) }
                     )
                     fieldIndex++
                 }
@@ -653,7 +654,8 @@ private fun EditorFieldBox(
     onMoveDown: () -> Unit,
     onChange: (Field) -> Unit,
     onDelete: () -> Unit,
-    onGenerate: () -> Unit
+    onGenerate: () -> Unit,
+    onNotice: (String) -> Unit
 ) {
     var menu by remember(field.id) { mutableStateOf(false) }
     var visible by remember(field.id) { mutableStateOf(false) }
@@ -668,7 +670,7 @@ private fun EditorFieldBox(
                     // 重复选中同一个文件时不做替换：内容一致却改 updatedAt 会白白触发一次同步，
                     // 而且用户得不到任何反馈，会以为没点上。
                     if (encoded == field.value && name == field.fileName) {
-                        Toast.makeText(context, "当前已是该文件，未做替换", Toast.LENGTH_SHORT).show()
+                        onNotice("当前已是该文件，未做替换")
                         return@onSuccess
                     }
                     onChange(
@@ -680,7 +682,7 @@ private fun EditorFieldBox(
                     )
                 }
                 .onFailure { error ->
-                    Toast.makeText(context, error.message ?: "无法读取文件", Toast.LENGTH_SHORT).show()
+                    onNotice(error.message ?: "无法读取文件")
                 }
         }
     }
@@ -750,13 +752,9 @@ private fun EditorFieldBox(
                         // 只存 secret 会丢这些信息。
                         if (Totp.parse(text) != null) {
                             onChange(field.copy(value = text.trim()))
-                            Toast.makeText(context, "已填入动态验证码密钥", Toast.LENGTH_SHORT).show()
+                            onNotice("已填入动态验证码密钥")
                         } else {
-                            Toast.makeText(
-                                context,
-                                "这不是动态验证码密钥，换一个二维码试试",
-                                Toast.LENGTH_LONG
-                            ).show()
+                            onNotice("这不是动态验证码密钥，换一个二维码试试")
                         }
                     }
                 )
@@ -1020,17 +1018,14 @@ private fun FieldDialog(
 ) {
     var label by remember { mutableStateOf(initialLabel) }
     var type by remember { mutableStateOf(initialType) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title, fontWeight = FontWeight.Bold) },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 430.dp)
-                    .imePadding()
-                    .verticalScroll(rememberScrollState())
-                                ) {
+    InputDialog(
+        title = title,
+        onDismiss = onDismiss,
+        confirmText = confirmText,
+        // 字段名留空时用类型名兜底：以前一律叫「自定义字段」，
+        // 加两个空名字段后列表里全是同名项，看不出哪个是密码、哪个是网址。
+        onConfirm = { onConfirm(label.trim().ifBlank { typeLabel(type) }, type) }
+    ) {
                 OutlinedTextField(
                     value = label,
                     onValueChange = { label = it },
@@ -1086,22 +1081,7 @@ private fun FieldDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            }
-        },
-        confirmButton = {
-            Button(
-                // 字段名留空时用类型名兜底：以前一律叫「自定义字段」，
-                // 加两个空名字段后列表里全是同名项，看不出哪个是密码、哪个是网址。
-                onClick = { onConfirm(label.trim().ifBlank { typeLabel(type) }, type) },
-                shape = RoundedCornerShape(50)
-            ) {
-                Text(confirmText)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
-        }
-    )
+    }
 }
 
 /** 类型选择卡片：图标 + 名称，选中时主色描边，与图标选择控件同一套视觉语言。 */

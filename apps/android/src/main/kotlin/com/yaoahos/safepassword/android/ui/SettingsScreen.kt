@@ -116,8 +116,6 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
     ) { uri -> if (uri != null) viewModel.exportEncrypted(uri) }
     // JSON / CSV / XML 都是明文（含全部密码），导出前先确认一次，避免手滑。
     var pendingPlainExport by remember { mutableStateOf<(() -> Unit)?>(null) }
-    // 临时入口：压缩已有图标。用完连同 AppViewModel.compactIcons 一起删掉。
-    var showCompactIcons by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -137,7 +135,7 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
                 .fillMaxSize()
                 .padding(padding)
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberEntryScrollState())
                                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -279,12 +277,6 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
                     subtitle = state.activeMeta?.name.orEmpty(),
                     onClick = { showRename = true }
                 )
-                // 临时入口：一次性把老图标压成新规格，用完可删。
-                SettingRow(
-                    title = "压缩已有图标",
-                    subtitle = "按新规格重新编码当前密码库的图标",
-                    onClick = { showCompactIcons = true }
-                )
             }
 
             SectionCard(title = "显示与搜索") {
@@ -406,22 +398,6 @@ fun SettingsScreen(viewModel: AppViewModel, state: AppUiState, activity: MainAct
         )
     }
 
-    // 临时入口：压缩已有图标。
-    if (showCompactIcons) {
-        ConfirmDialog(
-            title = "压缩已有图标？",
-            text = "会把当前密码库里所有自定义图标按新规格（正方形 192px）重新编码，" +
-                "尺寸和体积都会变小，画质无损。条目的修改时间会更新，并触发一次同步。\n\n" +
-                "只处理当前密码库；其它密码库切换过去再点一次即可。",
-            confirmText = "开始压缩",
-            onDismiss = { showCompactIcons = false },
-            onConfirm = {
-                showCompactIcons = false
-                viewModel.compactIcons()
-            }
-        )
-    }
-
     if (showAutoLock) {
         OptionDialog(
             title = "自动锁定",
@@ -535,33 +511,26 @@ private fun ChangePasswordDialog(onDismiss: () -> Unit, onConfirm: (String, Stri
     var newPassword by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     val mismatch = confirm.isNotBlank() && newPassword != confirm
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("修改主密码") },
-        text = {
-            Column(Modifier.imePadding()) {
-                PasswordField(oldPassword, { oldPassword = it }, "旧主密码")
-                Spacer(Modifier.height(8.dp))
-                PasswordField(newPassword, { newPassword = it }, "新主密码（至少 8 位）")
-                Spacer(Modifier.height(8.dp))
-                PasswordField(confirm, { confirm = it }, "确认新主密码")
-                if (mismatch) {
-                    Spacer(Modifier.height(6.dp))
-                    InlineNotice(
-                        text = "两次输入不一致",
-                        accent = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onConfirm(oldPassword, newPassword) },
-                enabled = oldPassword.isNotBlank() && newPassword.length >= 8 && newPassword == confirm
-            ) { Text("修改") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
-    )
+    InputDialog(
+        title = "修改主密码",
+        onDismiss = onDismiss,
+        confirmText = "修改",
+        confirmEnabled = oldPassword.isNotBlank() && newPassword.length >= 8 && newPassword == confirm,
+        onConfirm = { onConfirm(oldPassword, newPassword) }
+    ) {
+        PasswordField(oldPassword, { oldPassword = it }, "旧主密码")
+        Spacer(Modifier.height(8.dp))
+        PasswordField(newPassword, { newPassword = it }, "新主密码（至少 8 位）")
+        Spacer(Modifier.height(8.dp))
+        PasswordField(confirm, { confirm = it }, "确认新主密码")
+        if (mismatch) {
+            Spacer(Modifier.height(6.dp))
+            InlineNotice(
+                text = "两次输入不一致",
+                accent = MaterialTheme.colorScheme.error
+            )
+        }
+    }
 }
 
 @Composable
@@ -572,37 +541,30 @@ private fun ImportVaultDialog(
 ) {
     var password by remember { mutableStateOf("") }
     var name by remember { mutableStateOf(initialName) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("导入加密保险库") },
-        text = {
-            Column(Modifier.imePadding()) {
-                PasswordField(password, { password = it }, "原数据库主密码")
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("新密码库名称（可留空）") },
-                    singleLine = true,
-                    colors = safeFieldColors(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "导入会新增一个密码库，不会覆盖现有密码库；留空则按文件名命名，导入后也可以改名。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onConfirm(password, name) },
-                enabled = password.isNotBlank()
-            ) { Text("导入") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
-    )
+    InputDialog(
+        title = "导入加密保险库",
+        onDismiss = onDismiss,
+        confirmText = "导入",
+        confirmEnabled = password.isNotBlank(),
+        onConfirm = { onConfirm(password, name) }
+    ) {
+        PasswordField(password, { password = it }, "原数据库主密码")
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("新密码库名称（可留空）") },
+            singleLine = true,
+            colors = safeFieldColors(),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "导入会新增一个密码库，不会覆盖现有密码库；留空则按文件名命名，导入后也可以改名。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
 }
 
 private fun openBiometricSettings(context: Context) {

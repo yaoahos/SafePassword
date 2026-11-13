@@ -135,7 +135,7 @@ fun ToolsContent(viewModel: AppViewModel, state: AppUiState) {
             onDismiss = { showGenerator = false },
             onUse = { password ->
                 ClipboardHelper.copySensitive(context, password)
-                Toast.makeText(context, "密码已复制", Toast.LENGTH_SHORT).show()
+                viewModel.showMessage("密码已复制")
                 showGenerator = false
             }
         )

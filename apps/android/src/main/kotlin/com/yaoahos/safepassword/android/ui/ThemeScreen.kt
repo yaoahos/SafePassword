@@ -85,7 +85,7 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
             modifier = Modifier
                 .padding(padding)
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberEntryScrollState())
                                 .padding(horizontal = 20.dp)
         ) {
             Text("外观模式", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)

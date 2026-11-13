@@ -4,12 +4,12 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 - 项目名：`SafePassword`
 - 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.0.11`（versionCode 12）
+- 正式版本：`1.0.12`（versionCode 13）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`SafePassword-1.0.11-release.apk`
-- APK 大小：3,062,441 字节
-- SHA-256：`9805d4dbbaa49637f5f2c89f15ce47ec1ae90cba648cf0fb3b638c7f344ff968`
+- 正式 APK：`SafePassword-1.0.12-release.apk`
+- APK 大小：3,062,713 字节
+- SHA-256：`597736a8e39c4a2bf3a61b95dc2c1444183583d030b7e191cbb79716928d69bc`
 - 发布下载：[Releases](https://github.com/yaoahos/SafePassword/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
@@ -356,6 +356,15 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/11/13 · 1.0.12**
+- 修复 添加/编辑字段、修改主密码、导入保险库等对话框的按钮被输入法挤出屏幕、中间大片空白；统一为「内容限高可滚动 + 按钮固定可见 + 输入法避让作用于整体」
+- 修复 操作中被自动锁定：输入法可见、对话框在前台时不再计入闲置；主窗口触摸经 `Activity.dispatchTouchEvent` 上报
+- 优化 锁定后解锁回到锁定时的界面（页面 + 返回栈 + 搜索词 + 标签筛选 + 只看收藏），换库解锁或目标条目已失效时回退首页
+- 修复 启动放大动画弹到一半缩回、需点第二次才打开：`FLAG_SECURE` 改为窗口拿到焦点、放大动画播完后再挂上（此前在 `onCreate` 立刻挂上会让 MIUI/HyperOS 取消放大动画）
+- 优化 6 处系统 Toast 统一改为顶部圆角卡片提示
+- 优化 设置、安全中心、备份、标签管理、主题、关于、回收站、密码库管理、云同步进入时回到顶部
+- 变更 移除设置里的「压缩已有图标」临时入口
 
 **2026/11/13 · 1.0.11**
 - 修复 启动动画弹到一半缩回、需点第二次才打开：Activity 基类改为 FragmentActivity（AppCompat `applyDayNight()` 首次冷启动会 `recreate()`），主题改用平台 Material，`FLAG_SECURE` 改为幂等设置

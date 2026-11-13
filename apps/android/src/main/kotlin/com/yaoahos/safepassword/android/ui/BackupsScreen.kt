@@ -70,7 +70,7 @@ fun BackupsScreen(viewModel: AppViewModel, state: AppUiState) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberEntryScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {

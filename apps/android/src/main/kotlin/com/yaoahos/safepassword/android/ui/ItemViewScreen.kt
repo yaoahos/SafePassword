@@ -405,6 +405,7 @@ fun ItemViewScreen(viewModel: AppViewModel, state: AppUiState, itemId: String) {
                         }
                     },
                     onOpenUrl = { openUrlValue(it) },
+                    onNotice = { viewModel.showMessage(it) },
                     onOpenHistory = if (field.history.isNotEmpty()) {
                         { historyFieldId = field.id }
                     } else {
@@ -513,6 +514,7 @@ private fun FieldRow(
     field: Field,
     onCopy: () -> Unit,
     onOpenUrl: (String) -> Unit,
+    onNotice: (String) -> Unit,
     onOpenHistory: (() -> Unit)? = null
 ) {
     val isPassword = field.type == FieldType.PASSWORD
@@ -561,7 +563,7 @@ private fun FieldRow(
             runCatching {
                 context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
             }.onFailure {
-                android.widget.Toast.makeText(context, "导出失败：${it.message}", android.widget.Toast.LENGTH_SHORT).show()
+                onNotice("导出失败：${it.message}")
             }
         }
     }
