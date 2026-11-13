@@ -4,12 +4,12 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 - 项目名：`SafePassword`
 - 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.1.0`（versionCode 15）
+- 正式版本：`1.1.1`（versionCode 16）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`SafePassword-1.1.0-release.apk`
-- APK 大小：3,060,609 字节
-- SHA-256：`fe94aa961fdbb96f8cee707cd2475de79b4de09bd9025ebbe25a6e02c1771ebc`
+- 正式 APK：`SafePassword-1.1.1-release.apk`
+- APK 大小：3,060,697 字节
+- SHA-256：`2137765a0830bbb474b8ed8a997c62733a6cfef2290c828fb4601e653f0f8b11`
 - 发布下载：[Releases](https://github.com/yaoahos/SafePassword/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
@@ -356,6 +356,10 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/11/13 · 1.1.1**
+- 变更 删除密码库只删除本机文件，云端副本保留，误删可随时从云端重新下载
+- 新增 云端密码库列表显示已下载到本机的库，可就地删除云端那一份（不影响本机）
 
 **2026/11/13 · 1.1.0**
 - 新增 动态验证码字段：保存 otpauth:// 链接或 Base32 密钥，详情页实时生成 6 位动态码并一键复制；支持相机扫码录入，也能从相册选二维码截图识别
