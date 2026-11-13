@@ -39,6 +39,11 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # debug.keystore 按约定不入库（.gitignore 排除 *.keystore），CI 上现场生成
+      # 标准 debug 密钥（androiddebugkey / 口令 android），仅用于跑通签名校验。
+      - name: Generate debug keystore
+        run: keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+
       - name: Core tests and debug build
         run: ./gradlew :core:test :apps:android:assembleDebug --console=plain --no-daemon
 
