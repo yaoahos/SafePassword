@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -47,10 +48,10 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // 首帧之前就把 FLAG_SECURE 挂上（默认禁止截屏）。
-        // 以前这一步由 Compose 侧在首帧组合后的 LaunchedEffect 里做，等于在系统启动动画
-        // 进行中临时改窗口 flag，MIUI/HyperOS 会把启动动画掐断——用户看到的就是
-        // 「点图标 → 闪一下 → 还在桌面」。设置里允许截屏时，AppRoot 会在读到设置后清掉这个 flag。
+        // 默认禁止截屏：这里只登记期望值，真正改窗口 flag 推迟到启动放大动画播完
+        // （见 onWindowFocusChanged）。在动画期间改窗口属性会让 MIUI/HyperOS 掐断
+        // 放大动画退回桌面，用户看到的就是「弹到一半缩回」。设置里允许截屏时，
+        // AppRoot 读到设置后会把期望值翻成 false。
         setSecure(true)
         setContent {
             AppRoot(viewModel = viewModel, activity = this)
@@ -67,25 +68,81 @@ class MainActivity : FragmentActivity() {
     override fun onStart() {
         super.onStart()
         viewModel.onAppForegrounded()
+        busyTicker.removeCallbacks(busyTick)
+        busyTicker.post(busyTick)
     }
 
     override fun onStop() {
+        busyTicker.removeCallbacks(busyTick)
         viewModel.onAppBackgrounded()
         super.onStop()
     }
 
+    /** 禁止截屏的期望值；`onCreate` 与 AppRoot 首帧都会调 [setSecure]，真正改 flag 的时机见 [windowReady]。 */
+    private var secureDesired = true
+
+    /**
+     * 系统启动放大动画是否已经播完。
+     *
+     * MIUI/HyperOS 从桌面图标放大窗口的动画期间，窗口属性一变（哪怕是挂上 FLAG_SECURE）
+     * 就会取消放大、退回桌面——用户看到的就是「弹到一半缩回，点第二次才正常」。
+     * 所以启动阶段只记下期望值，等窗口拿到焦点、动画播完再真正改 flag。
+     * 热启动没有放大动画问题（flag 早已稳定），首帧的幂等调用也不会改动窗口。
+     */
+    private var windowReady = false
+
     fun setSecure(enabled: Boolean) {
-        // 幂等：AppRoot 首帧还会按设置再调一次。值没变就别碰窗口 flag——MIUI/HyperOS
-        // 在系统启动动画期间收到重复的窗口属性变化会直接掐断动画（弹到一半缩回）。
+        secureDesired = enabled
+        if (!windowReady) return
+        applySecure()
+    }
+
+    /** 幂等地把窗口 flag 对齐到 [secureDesired]；值没变就别碰窗口属性。 */
+    private fun applySecure() {
         val secure = (window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE) != 0
-        if (secure == enabled) return
-        if (enabled) {
+        if (secure == secureDesired) return
+        if (secureDesired) {
             window.setFlags(
                 WindowManager.LayoutParams.FLAG_SECURE,
                 WindowManager.LayoutParams.FLAG_SECURE
             )
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && !windowReady) {
+            windowReady = true
+            // 再让一拍，等系统的放大动画真正收尾。这约 300ms 内窗口尚未禁止截屏，
+            // 用户来不及操作；退后台抓最近任务快照时 flag 早已挂上，预览仍然是空白。
+            window.decorView.postDelayed({ applySecure() }, 300)
+        }
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        // 主窗口的任何触摸都算「用户还在用」。对话框是独立窗口、键盘输入也不走这里，
+        // 那两种情况由下面的 busyTicker 另行上报，避免「正在打字/点对话框却被锁」。
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) viewModel.onUserInteraction()
+        return super.dispatchTouchEvent(ev)
+    }
+
+    /**
+     * 「输入法开着」「对话框在前台」这两类操作不经过主窗口的触摸上报，
+     * 但显然不是闲置。每秒看一眼，命中就上报一次用户活动，闲置计时随之重置。
+     */
+    private val busyTicker = android.os.Handler(android.os.Looper.getMainLooper())
+    private val busyTick = object : Runnable {
+        override fun run() {
+            val decor = window.decorView
+            val imeVisible = androidx.core.view.ViewCompat
+                .getRootWindowInsets(decor)
+                ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true
+            // 对话框会抢走窗口焦点；键盘不会（IME 窗口不夺焦点），所以两条都要判。
+            val dialogInFront = !decor.hasWindowFocus()
+            if (imeVisible || dialogInFront) viewModel.onUserInteraction()
+            busyTicker.postDelayed(this, 1000)
         }
     }
 

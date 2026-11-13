@@ -81,7 +81,7 @@ fun SecurityScreen(viewModel: AppViewModel, state: AppUiState) {
                 .fillMaxSize()
                 .padding(padding)
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberEntryScrollState())
                                 .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {

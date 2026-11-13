@@ -273,19 +273,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 failedAttempts = 0
                 lockedUntil = 0
                 val saved = applyFingerprintState(meta.id)
+                // 解锁后回到锁定时的界面（页面 + 搜索词 + 标签筛选）；
+                // 换库解锁或目标条目已不存在时回到首页。
+                val back = consumeLockReturn(meta.id, opened.vault)
                 _state.update {
                     it.copy(
                         vaults = container.vaultStore.list(),
                         activeVault = opened.vault,
                         activeMeta = updatedMeta,
                         unlocked = true,
-                        screen = Screen.Vault,
+                        screen = back?.screen ?: Screen.Vault,
+                        backStack = back?.backStack ?: emptyList(),
                         busy = false,
-                        filterLabelId = defaultLabelIdFor(opened.vault),
+                        filterLabelId = back?.filterLabelId ?: defaultLabelIdFor(opened.vault),
                         // 换库时清掉上一个库的搜索词与「只看收藏」，
                         // 否则新库首页会莫名其妙是 0 条。
-                        search = "",
-                        onlyFavorites = false,
+                        search = back?.search ?: "",
+                        onlyFavorites = back?.onlyFavorites ?: false,
                         security = SecurityAnalyzer.analyze(opened.vault),
                         biometricSaved = saved,
                         settings = container.settings.settings,
@@ -321,7 +325,36 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * 锁定时记住的导航状态。
+     *
+     * 锁定只清内存里的明文数据，用户的预期是「锁一下再解锁，还在刚才那个界面」，
+     * 所以页面、返回栈、搜索词、标签筛选都要原样带回去。换库（新建 / 导入 / 云端恢复 /
+     * 在解锁页换一个库）会丢弃它——上一个库的界面状态对新库没有意义。
+     */
+    private data class LockReturn(
+        val vaultId: String,
+        val screen: Screen,
+        val backStack: List<Screen>,
+        val search: String,
+        val filterLabelId: String?,
+        val onlyFavorites: Boolean
+    )
+
+    private var lockReturn: LockReturn? = null
+
     fun lock() {
+        val current = _state.value
+        if (current.unlocked && current.screen != Screen.Unlock) {
+            lockReturn = LockReturn(
+                vaultId = current.activeMeta?.id.orEmpty(),
+                screen = current.screen,
+                backStack = current.backStack,
+                search = current.search,
+                filterLabelId = current.filterLabelId,
+                onlyFavorites = current.onlyFavorites
+            )
+        }
         idleJob?.cancel()
         idleJob = null
         active = null
@@ -351,6 +384,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 syncConflict = false
             )
         }
+    }
+
+    /**
+     * 解锁成功后取回锁定时的界面；换库或目标已失效时返回 null（调用方回退首页）。
+     * 无论取不取，记忆都会被消费掉，避免下一次解锁拿到上上次的残留。
+     */
+    private fun consumeLockReturn(vaultId: String, vault: com.yaoahos.safepassword.core.model.Vault): LockReturn? {
+        val saved = lockReturn ?: return null
+        lockReturn = null
+        if (saved.vaultId.isBlank() || saved.vaultId != vaultId) return null
+        // 条目可能已被云端合并/删除，目标页不再成立时退回首页。
+        val reachable = when (val target = saved.screen) {
+            is Screen.ViewItem -> vault.item(target.itemId) != null
+            is Screen.EditItem -> target.itemId == null || vault.item(target.itemId) != null
+            else -> true
+        }
+        return if (reachable) saved else saved.copy(screen = Screen.Vault, backStack = emptyList())
     }
 
     /** 云端同名冲突：关闭弹窗，先不改名（下次同步还会提示）。 */
@@ -735,49 +785,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     _state.update { it.copy(message = "已永久删除") }
                     scheduleSync()
                 }
-            } catch (e: Exception) {
-                fail(e)
-            }
-        }
-    }
-
-    /**
-     * 临时入口：把当前密码库里已有的自定义图标按统一规则重新编码一遍。
-     *
-     * 归一化只在「写入图标」时生效，老库里 256px 的图不会自己变小；这里提供一次性压缩。
-     * 只处理当前打开的密码库（其它库没有主密码打不开），切换密码库再点一次即可。
-     *
-     * 用完之后可以整块删掉：本函数 + `SettingsScreen` 里标注「临时入口」那一行与对话框。
-     */
-    fun compactIcons() {
-        val session = active ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                var changed = 0
-                var beforeChars = 0L
-                var afterChars = 0L
-                session.vault.items.forEach { item ->
-                    if (item.iconData.isBlank()) return@forEach
-                    val compacted = IconCodec.normalizeIconData(item.iconData)
-                    if (compacted == item.iconData) return@forEach
-                    beforeChars += item.iconData.length
-                    afterChars += compacted.length
-                    item.iconData = compacted
-                    item.updatedAt = now()
-                    changed++
-                }
-                if (changed == 0) {
-                    _state.update { it.copy(message = "图标已是统一规格，无需压缩") }
-                    return@launch
-                }
-                session.vault.touch()
-                persist()
-                // base64 字符数与字节数同量级，按 1024 折算即可，不必精确到字节。
-                val savedKb = maxOf(0L, (beforeChars - afterChars) / 1024)
-                _state.update {
-                    it.copy(message = "已压缩 $changed 个图标，省下约 $savedKb KB")
-                }
-                scheduleSync()
             } catch (e: Exception) {
                 fail(e)
             }

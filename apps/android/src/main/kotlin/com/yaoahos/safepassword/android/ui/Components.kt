@@ -65,6 +65,8 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -81,6 +83,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -398,6 +406,94 @@ fun InlineNotice(
     }
 }
 
+/**
+ * 浏览型页面的滚动状态：每次进入都回到顶部。
+ *
+ * `AppRoot` 用 `SaveableStateHolder` 记住每个页面的状态，重新进入会停在上次滚动到的位置
+ * （设置页滑到底部再返回，下次进来还停在底部）。浏览型页面没有要保留的表单，
+ * 从顶部开始更符合预期；编辑页/详情页仍用 `rememberScrollState` 保留状态。
+ */
+@Composable
+fun rememberEntryScrollState(): androidx.compose.foundation.ScrollState {
+    val state = rememberScrollState()
+    LaunchedEffect(Unit) { state.scrollTo(0) }
+    return state
+}
+
+/**
+ * 统一的输入类对话框外壳。
+ *
+ * 以前用 `AlertDialog` 并在 `text` 里套 `imePadding()`：键盘弹出时那段 padding 把内容撑高，
+ * 确认/取消按钮被挤出屏幕，中间还留一大片空白。这里改成自己排版的 `Dialog`——
+ * 内容区限高可滚动，按钮固定在底部，`imePadding` 作用在「含按钮的整体」上，
+ * 键盘弹出时整个对话框上移，按钮始终看得见、点得到。
+ */
+@Composable
+fun InputDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    confirmText: String,
+    onConfirm: () -> Unit,
+    modifier: Modifier = Modifier,
+    confirmEnabled: Boolean = true,
+    destructive: Boolean = false,
+    dismissText: String = "取消",
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = modifier
+                .padding(horizontal = 22.dp)
+                .fillMaxWidth()
+        ) {
+            Column(
+                Modifier
+                    .padding(horizontal = 22.dp, vertical = 20.dp)
+                    .imePadding()
+                    .navigationBarsPadding()
+            ) {
+                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(14.dp))
+                Column(
+                    Modifier
+                        .weight(1f, fill = false)
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    content()
+                }
+                Spacer(Modifier.height(18.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) { Text(dismissText) }
+                    Spacer(Modifier.width(4.dp))
+                    Button(
+                        onClick = onConfirm,
+                        enabled = confirmEnabled,
+                        shape = RoundedCornerShape(50),
+                        colors = if (destructive) {
+                            ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            )
+                        } else {
+                            ButtonDefaults.buttonColors()
+                        }
+                    ) { Text(confirmText) }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun ConfirmDialog(
     title: String,
@@ -435,31 +531,22 @@ fun TextInputDialog(
     onConfirm: (String) -> Unit
 ) {
     var value by remember { mutableStateOf(initialValue) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column(Modifier.imePadding()) {
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = { value = it },
-                    label = { Text(label) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = safeFieldColors()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (value.isNotBlank()) onConfirm(value.trim())
-                },
-                enabled = value.isNotBlank()
-            ) { Text(confirmText) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
-    )
+    InputDialog(
+        title = title,
+        onDismiss = onDismiss,
+        confirmText = confirmText,
+        confirmEnabled = value.isNotBlank(),
+        onConfirm = { if (value.isNotBlank()) onConfirm(value.trim()) }
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = { value = it },
+            label = { Text(label) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            colors = safeFieldColors()
+        )
+    }
 }
 
 fun templateIcon(templateId: String): ImageVector = when (templateId) {

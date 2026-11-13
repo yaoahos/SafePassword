@@ -81,7 +81,7 @@ fun VaultManagerScreen(viewModel: AppViewModel, state: AppUiState) {
                 .fillMaxSize()
                 .padding(padding)
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberEntryScrollState())
                                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {

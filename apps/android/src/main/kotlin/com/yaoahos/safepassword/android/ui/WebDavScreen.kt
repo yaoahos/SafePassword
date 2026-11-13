@@ -113,7 +113,7 @@ fun WebDavScreen(viewModel: AppViewModel, state: AppUiState, restore: Boolean = 
                 .fillMaxSize()
                 .padding(padding)
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberEntryScrollState())
                                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
