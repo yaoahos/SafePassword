@@ -1,9 +1,12 @@
 package com.yaoahos.safepassword.core.sync
 
 import com.yaoahos.safepassword.core.crypto.VaultContainer
+import com.yaoahos.safepassword.core.json.AppJson
 import com.yaoahos.safepassword.core.model.Vault
 import com.yaoahos.safepassword.core.model.now
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.encodeToString
+import java.security.MessageDigest
 
 enum class SyncDirection {
     NONE,
@@ -239,21 +242,37 @@ class SyncEngine(
 
         val merge = VaultMerger.merge(local.vault, remote.vault, last)
         val mergedVault = merge.vault.copy(
-            name = if (remote.vault.updatedAt > local.vault.updatedAt) remote.vault.name else local.vault.name,
+            // 库名跟着「谁更晚改过库」走，且必须晚于上次同步——否则远端那份没动过的
+            // 旧名字会把本地刚改的新名字压回去。与桌面端 sync.rs 的判定保持一致。
+            name = if (remote.vault.updatedAt > local.vault.updatedAt &&
+                remote.vault.updatedAt > last
+            ) {
+                remote.vault.name
+            } else {
+                local.vault.name
+            },
             cloudKey = local.vault.cloudKey.ifBlank { remote.vault.cloudKey.ifBlank { remoteKey } },
             deviceId = local.vault.deviceId
         )
 
-        if (fingerprint(mergedVault) == fingerprint(remote.vault)) {
+        // 方向判断一律基于内容指纹，不再比较 updatedAt：
+        // 两端墙上时钟不可比，「远端是否变过」用时间戳永远只能猜。
+        val localFp = fingerprint(local.vault)
+        val remoteFp = fingerprint(remote.vault)
+        val mergedFp = fingerprint(mergedVault)
+        // 合并结果比本地多出内容 → 这次确实从云端拿到了东西。
+        val downloaded = mergedFp != localFp
+
+        if (mergedFp == remoteFp) {
             // 云端已经包含全部改动（常见于只有对端动过），本地换成合并结果就够了。
             val adopted = mergedVault.copy(lastSyncedAt = now())
             return SyncResult(
                 container = local.withVault(adopted),
-                direction = if (remoteChanged) SyncDirection.DOWNLOADED else SyncDirection.NONE,
+                direction = if (downloaded) SyncDirection.DOWNLOADED else SyncDirection.NONE,
                 conflicts = merge.conflicts,
                 message = when {
                     merge.conflicts > 0 -> "已合并，产生 ${merge.conflicts} 个冲突副本"
-                    remoteChanged -> "已下载远端更新"
+                    downloaded -> "已下载远端更新"
                     else -> "已是最新状态"
                 }
             )
@@ -265,11 +284,11 @@ class SyncEngine(
             ?.let { return nameConflict(local.withVault(updated), it) }
         return SyncResult(
             container = local.withVault(updated),
-            direction = SyncDirection.MERGED,
+            direction = if (downloaded) SyncDirection.MERGED else SyncDirection.UPLOADED,
             conflicts = merge.conflicts,
             message = when {
                 merge.conflicts > 0 -> "已合并，产生 ${merge.conflicts} 个冲突副本"
-                remoteChanged -> "已合并本地与远端更新"
+                downloaded -> "已合并本地与远端更新"
                 else -> "已上传本地更新"
             }
         )
@@ -298,17 +317,30 @@ class SyncEngine(
     }
 
     /**
-     * 内容指纹：只看会同步的字段，且与列表顺序无关。
-     * 用来判断「合并结果是否已经在云端」，避免每次同步都白传一遍整库。
+     * 内容指纹：只抹掉「每次同步都会变、但用户不可见」的簿记字段，其余全量参与。
+     *
+     * 曾经只拼 `id:updatedAt:status:title`，字段值、备注、网址、标签关联、附件都不参与——
+     * 「updatedAt 相同但内容不同」会被误判成「云端已包含全部改动」，改动从此再也传不上去。
+     * 现在与桌面端 `content_hash` 同语义（两端各自计算、不跨端比较），并在序列化前按 id 排序，
+     * 保证列表顺序不同不算内容变化。
      */
     private fun fingerprint(vault: Vault): String {
-        val items = vault.items.sortedBy { it.id }
-            .joinToString("|") { "${it.id}:${it.updatedAt}:${it.status}:${it.title}" }
-        val labels = vault.labels.sortedBy { it.id }
-            .joinToString("|") { "${it.id}:${it.name}:${it.color}:${it.sortOrder}" }
-        val tombstones = vault.tombstones.sortedBy { it.id }
-            .joinToString("|") { "${it.id}:${it.deletedAt}" }
-        return "$items#$labels#$tombstones"
+        val canonical = vault.copy(
+            id = "",
+            updatedAt = 0,
+            lastSyncedAt = 0,
+            revision = 0,
+            deviceId = "",
+            items = vault.items.sortedBy { it.id }.toMutableList(),
+            labels = vault.labels.sortedBy { it.id }.toMutableList(),
+            tombstones = vault.tombstones.sortedBy { it.id }.toMutableList()
+        )
+        val bytes = AppJson.instance
+            .encodeToString(Vault.serializer(), canonical)
+            .toByteArray(Charsets.UTF_8)
+        return MessageDigest.getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString("") { "%02x".format(it) }
     }
 
     /**
@@ -341,8 +373,21 @@ class SyncEngine(
 
         val bytes = container.toBytes()
         webDav.put(remotePath, bytes)
-        manifest.upsert(remoteKey, container.vault.name, container.vault.updatedAt, bytes.size.toLong())
-        webDav.put(config.manifestPath(), manifest.toJson().toByteArray(Charsets.UTF_8))
+        // 清单是所有密码库共用的一份文件。上面读它的时间点到此刻已经隔着一次整包上传，
+        // 期间别的设备很可能刚写过清单；直接拿旧快照写回会把别人新加的条目抹掉
+        // （云端列表里少一个库，文件还在但用户看不到）。
+        // 所以写入前再取一次最新清单，只把自己这条 upsert 进去。
+        val latestText = try {
+            webDav.get(config.manifestPath())?.toString(Charsets.UTF_8)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 取不到就用进来时读到的那份，至少保证本库登记不丢。
+            null
+        }
+        val base = CloudManifest.parse(latestText ?: manifestText)
+        base.upsert(remoteKey, container.vault.name, container.vault.updatedAt, bytes.size.toLong())
+        webDav.put(config.manifestPath(), base.toJson().toByteArray(Charsets.UTF_8))
         return null
     }
 

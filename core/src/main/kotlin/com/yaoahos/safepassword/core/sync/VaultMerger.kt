@@ -54,9 +54,11 @@ internal object VaultMerger {
                 localItem != null && remoteItem != null -> {
                     val localNew = localItem.updatedAt > lastSyncedAt
                     val remoteNew = remoteItem.updatedAt > lastSyncedAt
-                    if (localNew && remoteNew && localItem.updatedAt != remoteItem.updatedAt &&
-                        !sameContent(localItem, remoteItem)
-                    ) {
+                    // 判冲突只看「两边都改过 + 内容确实不同」。不能再加
+                    // `updatedAt !=` 这类条件：时间戳相同不代表是同一份改动
+                    // （同毫秒编辑、批量导入都可能在两端撞出同一个时间戳），
+                    // 一旦漏判冲突就会静默丢掉一端的内容。
+                    if (localNew && remoteNew && !sameContent(localItem, remoteItem)) {
                         val winner = if (localItem.updatedAt >= remoteItem.updatedAt) localItem else remoteItem
                         val loser = if (winner === localItem) remoteItem else localItem
                         merged.add(winner)
@@ -87,11 +89,19 @@ internal object VaultMerger {
         return Result(result, conflicts)
     }
 
+    /**
+     * 内容是否一致。
+     *
+     * 必须与桌面端 `sp/merger.rs` 的 `same_content` 逐项对齐，否则同一份数据在
+     * 两端会得出不同的「算不算冲突」结论——Android 少比一项就会把「只有附件变了」
+     * 判成没变，直接取时间戳大的那侧，另一端的附件改动被静默丢掉。
+     */
     private fun sameContent(a: VaultItem, b: VaultItem): Boolean =
         a.title == b.title &&
             a.fields == b.fields &&
             a.notes == b.notes &&
             a.url == b.url &&
             a.labelIds == b.labelIds &&
-            a.status == b.status
+            a.status == b.status &&
+            a.attachments == b.attachments
 }
