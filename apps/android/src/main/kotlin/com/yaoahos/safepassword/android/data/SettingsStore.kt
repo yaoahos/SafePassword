@@ -26,6 +26,12 @@ data class AppSettings(
     val hibpApiKey: String = "",
     val sortMode: String = "TITLE",
     val themeColor: Long = 0xFF1677FF,
+    /**
+     * 主题色是否来自「跟随桌面背景」取色。
+     * 只影响主题页里壁纸行的选中态与进页面时要不要按当前壁纸重新取色；
+     * 用户手动选预设或输入色号会清掉它。
+     */
+    val themeColorAuto: Boolean = false,
     /** 外观模式：SYSTEM 跟随系统 / LIGHT 日间 / DARK 夜间。 */
     val themeMode: String = "SYSTEM",
     /** Empty means all entries; otherwise a label id shown by default. */

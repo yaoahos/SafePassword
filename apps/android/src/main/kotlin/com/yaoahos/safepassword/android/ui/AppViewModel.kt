@@ -9,6 +9,7 @@ import com.yaoahos.safepassword.android.SafePasswordApplication
 import com.yaoahos.safepassword.android.BuildConfig
 import com.yaoahos.safepassword.android.data.AppSettings
 import com.yaoahos.safepassword.android.data.BackupEntry
+import com.yaoahos.safepassword.android.data.WallpaperAccent
 import com.yaoahos.safepassword.android.security.BiometricHelper
 import com.yaoahos.safepassword.android.update.BadPayloadException
 import com.yaoahos.safepassword.android.update.GitHubUpdater
@@ -988,7 +989,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setFilterLabel(id: String?) = _state.update { it.copy(filterLabelId = id) }
     fun setThemeMode(mode: String) = updateSettings { it.copy(themeMode = mode) }
 
-    fun setThemeColor(value: Long) = updateSettings { it.copy(themeColor = value) }
+    /** 手动选色（预设圆点或输入色号）：同时退出「跟随桌面背景」。 */
+    fun setThemeColor(value: Long) =
+        updateSettings { it.copy(themeColor = value, themeColorAuto = false) }
+
+    /**
+     * 按当前桌面壁纸取主色作为主题色。
+     *
+     * @param silent 进主题页时的自动校正用 true：取不到壁纸就安静地保持原色，
+     *   只有用户主动点击时才提示失败。
+     */
+    fun applyWallpaperAccent(silent: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val color = runCatching { WallpaperAccent.pick(getApplication()) }.getOrNull()
+            if (color == null) {
+                if (!silent) showError("读不到当前壁纸的颜色，请手动选择")
+                return@launch
+            }
+            val next = 0xFF000000L or (color.toLong() and 0xFFFFFFL)
+            val settings = _state.value.settings
+            // 静默校正时壁纸没换、取色结果与上次相同，就别白写一次加密设置
+            if (settings.themeColor == next && settings.themeColorAuto) return@launch
+            updateSettings { it.copy(themeColor = next, themeColorAuto = true) }
+            if (!silent) showMessage("主题色已按桌面背景更新")
+        }
+    }
     fun setOnlyFavorites(value: Boolean) = _state.update { it.copy(onlyFavorites = value) }
     fun setSearchPasswords(value: Boolean) = updateSettings { it.copy(searchPasswords = value) }
 

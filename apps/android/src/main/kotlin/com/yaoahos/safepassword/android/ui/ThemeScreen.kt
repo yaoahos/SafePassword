@@ -1,18 +1,17 @@
 package com.yaoahos.safepassword.android.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
@@ -22,10 +21,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,14 +37,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -62,8 +62,19 @@ private val themePresets = listOf(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
-    var custom by remember { mutableStateOf("") }
     val current = state.settings.themeColor
+    var custom by remember { mutableStateOf(hexOf(current)) }
+
+    // 主题色被预设圆点或壁纸取色改动时，输入框跟着显示新色号；
+    // 由输入框自己触发的变化不重写，否则打字到一半会被格式化打断光标。
+    LaunchedEffect(current) {
+        if (parseHexColor(custom) != current) custom = hexOf(current)
+    }
+
+    // 上次用的是「跟随桌面背景」时，进页面按当前壁纸静默校正一次（换了壁纸不必再点一次）。
+    LaunchedEffect(Unit) {
+        if (state.settings.themeColorAuto) viewModel.applyWallpaperAccent(silent = true)
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -124,6 +135,61 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
                 }
             }
             Spacer(Modifier.height(20.dp))
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.applyWallpaperAccent() }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 用一圈色相环表示「从画面里取色」，比放一个具体图标更贴这个动作
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.sweepGradient(
+                                    listOf(
+                                        Color(0xFFFF3B30), Color(0xFFFFCC00), Color(0xFF34C759),
+                                        Color(0xFF32ADE6), Color(0xFF5856D6), Color(0xFFFF3B30)
+                                    )
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("跟随桌面背景", fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "取当前桌面壁纸的主色作为主题色",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (state.settings.themeColorAuto) {
+                        Icon(
+                            Icons.Outlined.Check,
+                            contentDescription = "当前使用壁纸取色",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(20.dp))
             Text("预置颜色", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(12.dp))
             LazyVerticalGrid(
@@ -170,17 +236,25 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
             Text("自定义颜色", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // 左侧色块就是输入值的即时预览：输入未凑满 #RRGGBB 时先显示当前主题色
                 Surface(
                     modifier = Modifier
                         .size(44.dp),
                     shape = CircleShape,
-                    color = Color(current),
+                    color = Color(parseHexColor(custom) ?: current),
                     border = null
                 ) {}
                 Spacer(Modifier.width(12.dp))
                 OutlinedTextField(
                     value = custom,
-                    onValueChange = { custom = it.take(7) },
+                    onValueChange = { input ->
+                        val cleaned = sanitizeHexInput(input)
+                        custom = cleaned
+                        // 凑满 6 位合法十六进制立刻生效，不用再点「应用」
+                        parseHexColor(cleaned)?.let { value ->
+                            if (value != current) viewModel.setThemeColor(value)
+                        }
+                    },
                     placeholder = { Text("#2563EB") },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
@@ -192,28 +266,24 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
                     ),
                     modifier = Modifier.weight(1f)
                 )
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    onClick = {
-                        val value = parseHexColor(custom)
-                        if (value == null) {
-                            viewModel.showError("请输入 #RRGGBB 格式的颜色")
-                        } else {
-                            viewModel.setThemeColor(value)
-                            viewModel.showMessage("主题色已更新")
-                        }
-                    },
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text("应用") }
             }
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "当前：" + String.format(Locale.US, "#%06X", current and 0xFFFFFFL),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
+}
+
+private fun hexOf(color: Long): String = String.format(Locale.US, "#%06X", color and 0xFFFFFFL)
+
+/** 只留合法输入：# 只能在首位，十六进制统一大写，最多 7 位（# + 6 位）。 */
+private fun sanitizeHexInput(input: String): String {
+    val builder = StringBuilder()
+    input.trim().forEachIndexed { index, ch ->
+        val c = ch.uppercaseChar()
+        when {
+            index == 0 && c == '#' -> builder.append('#')
+            c in '0'..'9' || c in 'A'..'F' -> builder.append(c)
+        }
+    }
+    return if (builder.length > 7) builder.substring(0, 7) else builder.toString()
 }
 
 private fun parseHexColor(input: String): Long? {
