@@ -54,10 +54,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import javax.crypto.Cipher
 import java.io.BufferedReader
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as SafePasswordApplication
@@ -82,6 +84,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var idleJob: Job? = null
     private var syncJob: Job? = null
     private var updateJob: Job? = null
+    /**
+     * 同步单飞锁：同一时刻只允许一个同步走完「读库 → 上传库文件 → 写清单」整条链路。
+     * 此前连点同步、自动同步与手动同步撞在一起时，两次全流程会交替写本地库文件与
+     * 云端清单，后一次可能拿着旧快照覆盖前一次刚写的东西。
+     */
+    private val syncMutex = Mutex()
+    /** 同步进行中又被要求再同步一次：等这次结束后补跑，胜过硬掐断。 */
+    private val syncAgainPending = AtomicBoolean(false)
     /** 自动拉取（轮询云端是否有更新）的后台任务。 */
     private var pullJob: Job? = null
     /** 上一次看到的远端 Last-Modified，0 表示还没取到过。 */
@@ -1181,6 +1191,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun syncNow() {
+        // 自动同步正在跑时不静默吞掉这次点击：给个状态，别让按钮看着没反应。
+        if (syncMutex.isLocked) {
+            _state.update { it.copy(syncStatus = "正在同步中…", syncStatusAt = now()) }
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) { doSync(silent = false) }
     }
 
@@ -1256,6 +1271,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private fun scheduleSync() {
         if (!_state.value.settings.autoSync) return
         if (!_state.value.webDav.isConfigured()) return
+        // 已有同步在跑：不打断它。它可能正处在「库文件已 PUT、清单还没写」之间，
+        // 掐断会留下云端列表缺条的中间态；改为记一个标记，等它结束后补跑。
+        if (syncMutex.isLocked) {
+            syncAgainPending.set(true)
+            return
+        }
+        // 还停在 1.5s 防抖里（没进网络）：取消这次重新计时是安全的。
         syncJob?.cancel()
         syncJob = viewModelScope.launch(Dispatchers.IO) {
             delay(1500)
@@ -1332,11 +1354,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * 同步入口：先抢单飞锁，抢不到就直接返回（已经有一次同步在跑，
+     * 它会读到最新状态；硬插进去只会两边互相覆盖）。
+     */
     private suspend fun doSync(
         silent: Boolean,
         // 默认合并：两端的墙上时钟不可比，按「谁的时间戳更新」挑赢家会丢数据。
         // 只有用户明确选择「保留本地并覆盖云端」时才传 KEEP_LOCAL。
         strategy: ConflictStrategy = ConflictStrategy.MERGE
+    ) {
+        if (!syncMutex.tryLock()) return
+        try {
+            runSync(silent, strategy)
+        } finally {
+            syncMutex.unlock()
+            // 这次同步期间又来了改动（自动同步被推迟）：补跑一次，别让那次改动等到下次触发
+            if (syncAgainPending.compareAndSet(true, false)) scheduleSync()
+        }
+    }
+
+    private suspend fun runSync(
+        silent: Boolean,
+        strategy: ConflictStrategy
     ) {
         val session = active ?: return
         val meta = _state.value.activeMeta ?: return
@@ -1418,7 +1458,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         } catch (e: CancellationException) {
-            // 调度去重会取消进行中的同步（如连点收藏），取消不是失败，交还给协程机制。
+            // 取消不是失败，但要先把 busy 复位：留在 true 会让界面一直停「正在同步…」，
+            // 自动拉取也会因为 busy=true 从此永久跳过（只在退出/切库这类场景触发）。
+            _state.update { it.copy(busy = false) }
             throw e
         } catch (e: Exception) {
             if (silent) {
