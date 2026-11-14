@@ -1,5 +1,6 @@
 package com.yaoahos.safepassword.core.sync
 
+import com.yaoahos.safepassword.core.model.AttachmentRef
 import com.yaoahos.safepassword.core.model.Tombstone
 import com.yaoahos.safepassword.core.model.Vault
 import com.yaoahos.safepassword.core.model.VaultItem
@@ -97,5 +98,63 @@ class VaultMergerTest {
         val merged = VaultMerger.merge(local, remote, lastSyncedAt = t - 2_000).vault
 
         assertEquals(listOf("b"), merged.items.map { it.id })
+    }
+
+    // ---- 冲突判定：两端都改过才算冲突，且判定依据必须是「内容不同」而不是时间戳 ----
+
+    @Test
+    fun `both sides edited creates a conflict copy`() {
+        val local = Vault().apply { items.add(item("a", updatedAt = t, title = "手机改的")) }
+        val remote = Vault().apply { items.add(item("a", updatedAt = t - 1_000, title = "电脑改的")) }
+
+        val result = VaultMerger.merge(local, remote, lastSyncedAt = t - 5_000)
+
+        assertEquals(1, result.conflicts)
+        assertEquals(2, result.vault.items.size)
+        assertEquals("手机改的", result.vault.items[0].title)
+        assertTrue(
+            "败者应保留为冲突副本",
+            result.vault.items[1].title.startsWith("电脑改的")
+        )
+    }
+
+    @Test
+    fun `same timestamp but different content still conflicts`() {
+        // 同毫秒编辑（或批量导入）会让两端撞出同一个 updatedAt。
+        // 此时内容不同，必须判冲突——曾因 `updatedAt !=` 前置条件而静默取本地、丢掉远端改动。
+        val local = Vault().apply { items.add(item("a", updatedAt = t, title = "手机改的")) }
+        val remote = Vault().apply { items.add(item("a", updatedAt = t, title = "电脑改的")) }
+
+        val result = VaultMerger.merge(local, remote, lastSyncedAt = t - 5_000)
+
+        assertEquals("时间戳相同但内容不同必须产生冲突副本", 1, result.conflicts)
+        assertEquals(2, result.vault.items.size)
+    }
+
+    @Test
+    fun `same timestamp and same content produces no conflict`() {
+        val local = Vault().apply { items.add(item("a", updatedAt = t)) }
+        val remote = Vault().apply { items.add(item("a", updatedAt = t)) }
+
+        val result = VaultMerger.merge(local, remote, lastSyncedAt = t - 5_000)
+
+        assertEquals(0, result.conflicts)
+        assertEquals(1, result.vault.items.size)
+    }
+
+    @Test
+    fun `attachment-only change still conflicts`() {
+        // 附件不参与过 sameContent 的比较时，Android 会把「只有附件变了」判成没变，
+        // 直接取时间戳大的那侧，另一端的附件改动被静默丢弃。桌面端一直比 attachments。
+        val withAttachment = item("a", updatedAt = t, title = "同标题").apply {
+            attachments.add(AttachmentRef(id = "att-1", name = "a.pdf", size = 1_024))
+        }
+        val local = Vault().apply { items.add(withAttachment) }
+        val remote = Vault().apply { items.add(item("a", updatedAt = t - 1_000, title = "同标题")) }
+
+        val result = VaultMerger.merge(local, remote, lastSyncedAt = t - 5_000)
+
+        assertEquals("只有附件不同的两端必须判冲突", 1, result.conflicts)
+        assertEquals(2, result.vault.items.size)
     }
 }

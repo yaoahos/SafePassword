@@ -28,6 +28,9 @@ class SyncEngineTest {
     private class FakeDav {
         val files = mutableMapOf<String, ByteArray>()
 
+        /** 每次 PUT 成功后的钩子，用来模拟「别的设备在本次同步进行中写入云端」。 */
+        var afterPut: ((String) -> Unit)? = null
+
         fun engine() = MockEngine { request ->
             val path = request.url.encodedPath.trimStart('/')
             when (request.method) {
@@ -42,6 +45,7 @@ class SyncEngineTest {
                 HttpMethod.Put -> {
                     val body = request.body
                     files[path] = if (body is OutgoingContent.ByteArrayContent) body.bytes() else ByteArray(0)
+                    afterPut?.invoke(path)
                     respond("", HttpStatusCode.Created)
                 }
 
@@ -161,6 +165,62 @@ class SyncEngineTest {
             // 另一个库的云端文件必须原封不动。
             val other = VaultContainer.open(fake.files.getValue(otherKeyPath), password)
             assertEquals(listOf("z"), other.vault.items.map { it.id })
+        } finally {
+            webDav.close()
+        }
+    }
+
+    /**
+     * 云端清单是所有库共用的一份文件。本机从「读清单」到「写清单」之间隔着一次整包上传，
+     * 别的设备完全可能在这期间登记了自己的库。写回时必须重新读最新清单、只 upsert 自己这条，
+     * 否则那台设备的条目会被旧快照覆盖掉——云端列表少一个库，文件还在但用户看不到。
+     */
+    @Test
+    fun `manifest keeps entries that another device added during this upload`() = runBlocking {
+        val t = now()
+        val contentKey = VaultContainer.create(Vault(), password).vault.contentKey
+        // lastSyncedAt = 0：首次上传（lastSyncedAt > 0 且云端无文件会先判「云端已删除」）。
+        val localVault = vaultWith(contentKey, t, 0, listOf(item("a", t)))
+        localVault.cloudKey = requireNotNull(CloudManifest.keyForContent(contentKey))
+
+        val config = WebDavConfig(baseUrl = "https://dav.example.com/")
+        val fake = FakeDav()
+        val preexistingKey = "k00000000000000aa"
+        val intruderKey = "k00000000000000bb"
+
+        // 云端已经登记了另一个库
+        fake.files[config.manifestPath()] = CloudManifest().apply {
+            upsert(preexistingKey, "已有的库", t - 9_000, 111)
+        }.toJson().toByteArray(Charsets.UTF_8)
+
+        // 库文件刚写完的那一刻，模拟另一台设备登记了它自己的库
+        var injected = false
+        fake.afterPut = { path ->
+            if (!injected && path.endsWith(".spv")) {
+                injected = true
+                val current = CloudManifest.parse(
+                    fake.files.getValue(config.manifestPath()).toString(Charsets.UTF_8)
+                )
+                current.upsert(intruderKey, "另一台设备的库", t, 222)
+                fake.files[config.manifestPath()] =
+                    current.toJson().toByteArray(Charsets.UTF_8)
+            }
+        }
+
+        val webDav = WebDavClient(config, fake.engine())
+        try {
+            SyncEngine(webDav, config).sync(VaultContainer.create(localVault, password), password)
+
+            val finalManifest = CloudManifest.parse(
+                fake.files.getValue(config.manifestPath()).toString(Charsets.UTF_8)
+            )
+            val keys = finalManifest.vaults.map { it.key }.toSet()
+            assertTrue("原本就在的库条目不能被抹掉", keys.contains(preexistingKey))
+            assertTrue("上传期间别的设备登记的库必须保留", keys.contains(intruderKey))
+            assertTrue(
+                "本库自己也要登记上",
+                keys.contains(requireNotNull(CloudManifest.keyForContent(contentKey)))
+            )
         } finally {
             webDav.close()
         }
