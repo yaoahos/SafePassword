@@ -27,11 +27,10 @@ data class AppSettings(
     val sortMode: String = "TITLE",
     val themeColor: Long = 0xFF1677FF,
     /**
-     * 主题色是否来自「跟随桌面背景」取色。
-     * 只影响主题页里壁纸行的选中态与进页面时要不要按当前壁纸重新取色；
-     * 用户手动选预设或输入色号会清掉它。
+     * 动态取色：用系统按桌面壁纸生成的整套配色（Material You），开启时忽略 [themeColor]。
+     * 只有 Android 12 及以上才有系统接口，低版本读出 true 也不会生效（主题页会置灰并说明）。
      */
-    val themeColorAuto: Boolean = false,
+    val dynamicColor: Boolean = false,
     /** 外观模式：SYSTEM 跟随系统 / LIGHT 日间 / DARK 夜间。 */
     val themeMode: String = "SYSTEM",
     /** Empty means all entries; otherwise a label id shown by default. */

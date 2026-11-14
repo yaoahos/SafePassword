@@ -1,15 +1,19 @@
 package com.yaoahos.safepassword.android.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 
 private val DefaultBrand = Color(0xFF1677FF)
 private val LightBackground = Color(0xFFF4F4F6)
@@ -19,11 +23,22 @@ private val DarkSurface = Color(0xFF18181B)
 @Composable
 fun SafePasswordTheme(
     themeColor: Color = DefaultBrand,
+    /** 跟随桌面壁纸：用系统按壁纸生成的整套配色，忽略 [themeColor]。 */
+    dynamic: Boolean = false,
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
+    val context = LocalContext.current
+    // 系统取色是 Android 12 起才有的能力；低版本自动落回自选色，不报错也不把界面画成灰，
+    // 主题页会直接写明「需要 Android 12 及以上」，不让用户对着一个点不动的开关猜。
+    val scheme = when {
+        dynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        darkTheme -> darkScheme(themeColor)
+        else -> lightScheme(themeColor)
+    }
     MaterialTheme(
-        colorScheme = if (darkTheme) darkScheme(themeColor) else lightScheme(themeColor),
+        colorScheme = scheme,
         typography = Typography(),
         content = content
     )

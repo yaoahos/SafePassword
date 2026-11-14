@@ -148,6 +148,7 @@ fun AppRoot(viewModel: AppViewModel, activity: MainActivity) {
 
     SafePasswordTheme(
         themeColor = Color(state.settings.themeColor),
+        dynamic = state.settings.dynamicColor,
         darkTheme = when (state.settings.themeMode) {
             "LIGHT" -> false
             "DARK" -> true
