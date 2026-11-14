@@ -67,8 +67,9 @@ private val themePresets = listOf(
 /**
  * 主题页：外观模式 → 动态取色 → 预置颜色 → 自定义颜色。
  *
- * 动态取色走系统 Material You（[SafePasswordTheme] 里的 dynamicLight/DarkColorScheme），
- * 不自己从壁纸像素算色：系统给的是整套协调色，还自带壁纸变化与深浅色的跟随规则。
+ * 动态取色的主色来自系统对壁纸的取色结果（[SafePasswordTheme] → WallpaperSeed.kt），
+ * 只在这一层派生 primary，其余 surface / 容器层继续用中性色：既保证主色真的跟着
+ * 壁纸走（不走会卡住的 accent overlay），也不会让弹窗和菜单跟着染色。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,7 +78,7 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
     // 12 以下没有系统取色接口：入口置灰并写明原因，不给一个点不动的开关
     val dynamicSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val dynamicNow = settings.dynamicColor && dynamicSupported
-    // 当前真正生效的主色：动态取色开着时就是系统按壁纸生成的那个
+    // 当前真正生效的主色：动态取色开着时就是由壁纸色派生的那个
     val effective = if (dynamicNow) MaterialTheme.colorScheme.primary else Color(settings.themeColor)
     val effectiveHex = hexOf(effective)
 
@@ -182,7 +183,7 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
                         Column(Modifier.weight(1f).padding(start = 11.dp)) {
                             Text("跟随桌面壁纸", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                             Text(
-                                if (dynamicSupported) "用 Material You 从壁纸生成整套配色"
+                                if (dynamicSupported) "读取系统从壁纸提取的主色"
                                 else "需要 Android 12 及以上",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -196,7 +197,7 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
                         )
                     }
                     Text(
-                        "开启后使用系统按壁纸生成的配色，忽略下方主题颜色；关闭后恢复上次选的颜色。",
+                        "开启后主色跟随桌面壁纸，忽略下方主题颜色；关闭后恢复上次选的颜色。",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 16.sp,
@@ -324,7 +325,7 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
                 )
             }
             Text(
-                if (dynamicNow) "色块默认显示壁纸生成的配色；输入色值可即时预览，点「应用」后生效并关闭动态取色。"
+                if (dynamicNow) "色块默认显示壁纸提取的主色；输入色值可即时预览，点「应用」后生效并关闭动态取色。"
                 else "输入色值即时预览，点「应用」后生效。支持 #RRGGBB 与 RRGGBB。",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
