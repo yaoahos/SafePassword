@@ -3,7 +3,7 @@ package com.yaoahos.safepassword.core.ui
 /**
  * 条目默认图标（首字符方块）的底色。
  *
- * **与桌面端必须完全一致**：`src/utils.ts` 的
+ * **与桌面端必须完全一致**：桌面端仓库 `src/utils.ts` 的
  * `FALLBACK_COLORS` 与 `itemIcon`。色板顺序、取色算法都不可单独改动，
  * 否则同一个标题会在手机上是红色、电脑上是蓝色。
  *
