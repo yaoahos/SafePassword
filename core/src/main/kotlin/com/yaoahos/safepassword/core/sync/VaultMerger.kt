@@ -16,6 +16,23 @@ internal object VaultMerger {
 
     data class Result(val vault: Vault, val conflicts: Int)
 
+    /**
+     * 抹掉已过保留期的墓碑，返回归一化后的库。
+     *
+     * 墓碑过期后既不能复活条目、也拦不住任何同步，纯粹是簿记残留；可它是库内容的一部分，
+     * 于是「哪一端先把它清掉」就成了内容差异。实测：云端只剩一个 2023 年的过期墓碑、
+     * 两端条目完全相同，[merge] 末尾的清理让合并结果与云端对不上，同步被判成
+     * 「本地有改动」并整库上传——每次冷启动都白白传一遍。
+     *
+     * 所以同步前先把两端都归一化（见 [SyncEngine.sync]），三个内容指纹都基于归一化结果。
+     */
+    fun dropExpiredTombstones(vault: Vault, before: Long = now() - Vault.TOMBSTONE_TTL_MS): Vault {
+        if (vault.tombstones.none { it.deletedAt < before }) return vault
+        return vault.copy(
+            tombstones = vault.tombstones.filter { it.deletedAt >= before }.toMutableList()
+        )
+    }
+
     fun merge(local: Vault, remote: Vault, lastSyncedAt: Long): Result {
         val localMap = local.items.associateBy { it.id }
         val remoteMap = remote.items.associateBy { it.id }
@@ -85,6 +102,8 @@ internal object VaultMerger {
             lastSyncedAt = now(),
             revision = maxOf(local.revision, remote.revision) + 1
         )
+        // 顺带清掉过期墓碑。同步路径传进来的两端已经归一化（[dropExpiredTombstones]），
+        // 这里对它们是无操作；留着是为了让直接调用 merge 的场景（测试、导入）也不会越清越乱。
         result.purgeOldTombstones()
         return Result(result, conflicts)
     }

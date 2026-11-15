@@ -240,16 +240,20 @@ class SyncEngine(
             )
         }
 
-        val merge = VaultMerger.merge(local.vault, remote.vault, last)
+        // 过期墓碑是簿记残留，不是用户改动：两端清得早晚不同，不该让同步判成「有改动」。
+        // 先各自归一化，再合并、再算指纹，三者的基准保持一致。
+        val localVault = VaultMerger.dropExpiredTombstones(local.vault)
+        val remoteVault = VaultMerger.dropExpiredTombstones(remote.vault)
+        val merge = VaultMerger.merge(localVault, remoteVault, last)
         val mergedVault = merge.vault.copy(
             // 库名跟着「谁更晚改过库」走，且必须晚于上次同步——否则远端那份没动过的
             // 旧名字会把本地刚改的新名字压回去。与桌面端 sync.rs 的判定保持一致。
-            name = if (remote.vault.updatedAt > local.vault.updatedAt &&
-                remote.vault.updatedAt > last
+            name = if (remoteVault.updatedAt > localVault.updatedAt &&
+                remoteVault.updatedAt > last
             ) {
-                remote.vault.name
+                remoteVault.name
             } else {
-                local.vault.name
+                localVault.name
             },
             cloudKey = local.vault.cloudKey.ifBlank { remote.vault.cloudKey.ifBlank { remoteKey } },
             deviceId = local.vault.deviceId
@@ -257,8 +261,8 @@ class SyncEngine(
 
         // 方向判断一律基于内容指纹，不再比较 updatedAt：
         // 两端墙上时钟不可比，「远端是否变过」用时间戳永远只能猜。
-        val localFp = fingerprint(local.vault)
-        val remoteFp = fingerprint(remote.vault)
+        val localFp = fingerprint(localVault)
+        val remoteFp = fingerprint(remoteVault)
         val mergedFp = fingerprint(mergedVault)
         // 合并结果比本地多出内容 → 这次确实从云端拿到了东西。
         val downloaded = mergedFp != localFp

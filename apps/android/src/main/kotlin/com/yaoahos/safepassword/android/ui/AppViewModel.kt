@@ -94,8 +94,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val syncAgainPending = AtomicBoolean(false)
     /** 自动拉取（轮询云端是否有更新）的后台任务。 */
     private var pullJob: Job? = null
-    /** 上一次看到的远端 Last-Modified，0 表示还没取到过。 */
-    private var lastRemoteMtime: Long = 0
     /** 上一次实际检查云端的时间，用于限制回前台时的检查频率。 */
     private var lastPullCheckAt: Long = 0
     private var failedAttempts = 0
@@ -372,7 +370,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         masterPassword = null
         pullJob?.cancel()
         pullJob = null
-        lastRemoteMtime = 0
         lastPullCheckAt = 0
         _state.update {
             it.copy(
@@ -1174,8 +1171,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         container.settings.webDav = config
         _state.update { it.copy(webDav = config) }
-        // 服务器或目录变了，之前的远端时间戳不再有意义。
-        lastRemoteMtime = 0
+        // 服务器或目录变了，之前记的远端版本不再有意义，清掉让它重新取一次。
+        _state.value.activeMeta?.let { container.vaultStore.updateRemoteMtime(it.id, 0) }
         restartPullLoop()
     }
 
@@ -1259,6 +1256,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         dataVersion = it.dataVersion + 1
                     )
                 }
+                // 刚拉下来的就是云端当前版本，记下来免得下一次检查又判成「云端有更新」。
+                rememberRemoteMtime(client, config, result.container.vault)
             } catch (e: Exception) {
                 fail(e.message ?: "拉取云端数据失败")
             } finally {
@@ -1347,19 +1346,56 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val changed = when {
                 // 服务器没给 Last-Modified，只能保守地认为有变化。
                 stat.lastModified <= 0 -> true
-                // 首次检查：比本机上次同步时间新才算有更新。
-                lastRemoteMtime <= 0 -> stat.lastModified > session.vault.lastSyncedAt
-                else -> stat.lastModified != lastRemoteMtime
+                // 有记录就只跟记录比：云端版本没变就是没变，与本机时钟快慢无关。
+                meta.lastRemoteMtime > 0 -> stat.lastModified != meta.lastRemoteMtime
+                // 还没有记录（老版本升级上来的索引 / 本机第一次检查）：只能退回
+                // 跟上次同步时间比，这一次判完就把版本落盘，下次起走上面那条。
+                else -> stat.lastModified > session.vault.lastSyncedAt
             }
-            lastRemoteMtime = stat.lastModified
-            if (!changed) return
+            if (!changed) {
+                rememberRemoteMtime(meta.id, stat.lastModified)
+                return
+            }
+            // 同步真的落了盘，runSync 里会把新的云端版本记下来。
+            // 这里不再补一次 stat：万一同步被跳过或失败，记成「已对齐」就再也拉不到那次更新了。
             doSync(silent = true)
-            // 同步后服务器时间会变，重新记录，避免下一次把自己刚上传的当成远端更新。
-            lastRemoteMtime = runCatching { client.stat(remotePath)?.lastModified ?: 0L }
-                .getOrDefault(lastRemoteMtime)
         } finally {
             client.close()
         }
+    }
+
+    /**
+     * 记下云端文件的版本（Last-Modified）。
+     *
+     * 存在索引里而不是内存里：冷启动后内存归零，只能拿服务器时间跟本机
+     * `lastSyncedAt` 硬比，服务器稍快就恒判「云端有更新」，每次启动都整包下载一遍。
+     */
+    private fun rememberRemoteMtime(vaultId: String, mtime: Long) {
+        if (mtime < 0) return
+        container.vaultStore.updateRemoteMtime(vaultId, mtime)
+        _state.update { st ->
+            val meta = st.activeMeta
+            if (meta == null || meta.id != vaultId || meta.lastRemoteMtime == mtime) {
+                st
+            } else {
+                st.copy(activeMeta = meta.copy(lastRemoteMtime = mtime))
+            }
+        }
+    }
+
+    /** HEAD 一次云端库文件并记下版本：同步刚写完云端时调用，免得下次检查把自己这份当成远端更新。 */
+    private suspend fun rememberRemoteMtime(
+        client: WebDavClient,
+        config: WebDavConfig,
+        vault: Vault
+    ) {
+        val key = CloudManifest.keyForContent(vault.contentKey).takeUnless { it.isNullOrBlank() }
+            ?: vault.cloudKey
+        if (key.isBlank()) return
+        val stat = runCatching {
+            client.stat(config.remotePath(key)) ?: client.stat(config.legacyRemotePath())
+        }.getOrNull() ?: return
+        rememberRemoteMtime(vault.id, stat.lastModified)
     }
 
     /**
@@ -1450,14 +1486,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val updatedMeta = meta.copy(lastSyncedAt = now(), name = result.container.vault.name, cloudKey = result.container.vault.cloudKey.ifBlank { meta.cloudKey })
             result.container.saveTo(container.vaultStore.vaultFile(updatedMeta))
             container.vaultStore.updateMeta(updatedMeta)
+            // 静默同步（解锁、回前台、定时拉取）在没有任何变化时不刷状态栏：
+            // 每次冷启动都闪一句「已是最新状态」，看起来像又跑了一整轮同步。
+            val quiet = silent && result.direction == SyncDirection.NONE
             _state.update {
                 it.copy(
                     activeVault = result.container.vault,
                     activeMeta = updatedMeta,
                     vaults = container.vaultStore.list(),
                     busy = false,
-                    syncStatus = result.message,
-                    syncStatusAt = now(),
+                    syncStatus = if (quiet) it.syncStatus else result.message,
+                    syncStatusAt = if (quiet) it.syncStatusAt else now(),
                     nameConflictPending = false,
                     syncStatusInWebDav = statusInWebDav,
                     message = if (silent || showsSyncStatusInline()) it.message else result.message,
@@ -1465,6 +1504,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     dataVersion = it.dataVersion + 1
                 )
             }
+            // 记下本次同步后云端文件的版本。不记的话，下一次检查会把刚上传的这份
+            // 当成「云端有更新」，切回前台又整包下载一遍。
+            rememberRemoteMtime(client, config, result.container.vault)
         } catch (e: CancellationException) {
             // 取消不是失败，但要先把 busy 复位：留在 true 会让界面一直停「正在同步…」，
             // 自动拉取也会因为 busy=true 从此永久跳过（只在退出/切库这类场景触发）。
@@ -2238,6 +2280,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         dataVersion = it.dataVersion + 1
                     )
                 }
+                // 刚把本地这份推回云端，记下新的云端版本。
+                rememberRemoteMtime(client, config, result.container.vault)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

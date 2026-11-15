@@ -111,6 +111,23 @@ class VaultStore(private val root: Path) {
         }
     }
 
+    /**
+     * 只更新「云端文件版本」这一项。
+     *
+     * 同步检查跑在后台，同时在跑的同步可能刚改过库名或云端键；整份 [VaultMeta] 回写
+     * 会拿旧快照把这些改动盖掉，所以这里读最新的索引、只写一个字段。
+     */
+    @Synchronized
+    fun updateRemoteMtime(id: String, mtime: Long) {
+        // 0 = 清除（换了服务器或目录，旧版本不再可比）；负数视为调用方没取到值，不动。
+        if (mtime < 0) return
+        val index = readIndex()
+        val stored = index.vaults.firstOrNull { it.id == id } ?: return
+        if (stored.lastRemoteMtime == mtime) return
+        stored.lastRemoteMtime = mtime
+        writeIndex(index)
+    }
+
     @Synchronized
     fun delete(meta: VaultMeta) {
         Files.deleteIfExists(vaultFile(meta))
