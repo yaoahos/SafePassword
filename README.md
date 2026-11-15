@@ -137,9 +137,8 @@ SafePassword 面向希望把密码数据掌握在自己手里的用户。它不�
 
 ### 5. 发布签名
 
-- 正式 APK 使用单独的 release keystore 签名。
-- `release.keystore` 与 `keystore.properties` 已加入 `.gitignore`，不应提交到版本库。
-- 一旦丢失 release keystore，已安装用户将无法覆盖升级，请离线备份。
+- 正式 APK 使用独立的 release keystore 签名。
+- 一旦丢失 release keystore，已安装用户将无法覆盖升级，务必备份到设备之外。
 
 > 安全边界：主密码遗忘后无法恢复；请同时保留加密备份。任何密码管理器都不能防御已 root、被植入木马或被实时录屏的设备。
 
@@ -178,7 +177,7 @@ apps/android/build/outputs/apk/debug/android-debug.apk
 
 ### 4. 正式构建
 
-正式构建需要 release keystore。项目根目录应存在：
+正式构建需要自己的 release keystore，放在项目根目录：
 
 ```text
 release.keystore
@@ -211,9 +210,9 @@ release 构建已启用代码压缩与资源收缩，并只保留真机 ABI：
 - R8 代码压缩与混淆（`isMinifyEnabled = true`）
 - 资源收缩（`isShrinkResources = true`）
 - ABI 仅 `arm64-v8a`、`armeabi-v7a`（去掉模拟器专用的 x86 / x86_64）
-- 压缩后 APK 体积约 2.5 MB
+- 压缩后 APK 体积约 3 MB
 
-混淆映射保存在 `apps/android/build/outputs/mapping/release/mapping.txt`，排查线上崩溃时用它将堆栈还原为可读的类名与方法名。若需要保留独立调试包，debug 构建不做压缩和 ABI 过滤，行为与之前一致。
+混淆映射保存在 `apps/android/build/outputs/mapping/release/mapping.txt`，排查线上崩溃时用它将堆栈还原为可读的类名与方法名。debug 构建不做压缩和 ABI 过滤，便于独立调试。
 
 产物：
 
@@ -221,24 +220,24 @@ release 构建已启用代码压缩与资源收缩，并只保留真机 ABI：
 apps/android/build/outputs/apk/release/android-release.apk
 ```
 
-重命名并复制到 `dist/`：
+分发前按版本号重命名：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk dist\SafePassword-1.0.10-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk SafePassword-1.1.4-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose dist\SafePassword-1.0.10-release.apk
-aapt.exe dump badging dist\SafePassword-1.0.10-release.apk
+apksigner.bat verify --verbose SafePassword-1.1.4-release.apk
+aapt.exe dump badging SafePassword-1.1.4-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.yaoahos.safepassword`
-- `versionCode: 7`
-- `versionName: 1.0.10`
+- `versionCode: 19`
+- `versionName: 1.1.4`
 - `application-label: SafePassword`
 - APK Signature Scheme v2：通过
 - 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`、`CAMERA`（仅扫码录入动态验证码时使用，可拒绝并从相册选图）
@@ -246,7 +245,7 @@ aapt.exe dump badging dist\SafePassword-1.0.10-release.apk
 ### 6. 测试
 
 - `:core:test` 覆盖加密、密码库容器、WebDAV 客户端、XML 导入导出、TOTP（RFC 6238 向量）、工具函数等。
-- 当前核心测试 70/70 通过（新增 7 条二维码解码、11 条图标归一化用例）。
+- 当前核心测试 83 项全部通过（12 个测试类，含加密、容器、同步、XML 导入导出、TOTP RFC 6238 向量、二维码解码与图标归一化）。
 
 ---
 
@@ -299,9 +298,6 @@ SafePassword/
 │       ├── json/               序列化配置
 │       └── security/           密码强度、生成器、HIBP
 ├── gradle/                     Gradle Wrapper
-├── dist/                       正式 APK
-├── release.keystore            正式签名（本地，不提交）
-├── keystore.properties         签名配置（本地，不提交）
 ├── build.gradle.kts
 ├── settings.gradle.kts
 └── README.md
