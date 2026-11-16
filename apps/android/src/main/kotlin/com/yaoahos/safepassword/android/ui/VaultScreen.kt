@@ -98,6 +98,7 @@ fun VaultContent(
     state: AppUiState,
     selectionMode: Boolean,
     selectedIds: Set<String>,
+    drawerOpen: Boolean,
     onToggleSelection: (String) -> Unit,
     onEnterSelection: (String) -> Unit,
     onClearSelection: () -> Unit
@@ -152,6 +153,14 @@ fun VaultContent(
         keyboard?.hide()
     }
 
+    // 收藏页是「全部」的一个筛选视图，不是独立页面：按返回先退回全部页，而不是退出应用。
+    // 必须带齐互斥条件——系统返回只响应最上层那一个 enabled 的 handler：
+    // 搜索聚焦、多选、抽屉打开时分别让给上面/外层的 handler，避免一次返回误退两件事。
+    BackHandler(enabled = state.onlyFavorites && !searchFocused && !selectionMode && !drawerOpen) {
+        viewModel.setOnlyFavorites(false)
+        viewModel.setFilterLabel(null)
+    }
+
     LaunchedEffect(state.search, state.filterLabelId, state.onlyFavorites, state.sortMode, state.sortAscending) {
         onClearSelection()
         // 换了筛选条件就是另一批条目了，列表要回到顶部，
@@ -171,6 +180,8 @@ fun VaultContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // 整块区域都能下拉刷新：收藏页条目少/为空时下半屏不再是无反应的死区。
+            .pullRefreshArea()
     ) {
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                     Spacer(Modifier.height(4.dp))

@@ -1,5 +1,8 @@
 package com.yaoahos.safepassword.android.ui
 
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -10,6 +13,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
@@ -75,4 +79,24 @@ private suspend fun settlePullIndicator(state: PullToRefreshState) {
         delay(60L)
         if (state.distanceFraction > 0f && !state.isAnimating) runCatching { state.snapTo(0f) }
     }
+}
+
+/**
+ * 让整块内容区都能触发下拉刷新（收藏页条目少/为空时尤其关键）。
+ *
+ * PullToRefreshBox 只是嵌套滚动的接收方：必须由子级滚动容器把「没被消费的位移」
+ * 往上抛，它才动。收藏页条目少甚至为空时走的是不可滚动的 EmptyState，或列表只占
+ * 上方一小截，下半屏空白不属于任何滚动容器——从那里下拉完全没反应，而全部页条目
+ * 多、列表填满屏幕，下拉就正常。同一个刷新容器在两页表现不一致，根源就在这里。
+ *
+ * 这里补一个滚动范围为 0 的可滚动节点：它自己不滚，只把位移原样往上传，于是标题栏、
+ * 空白区、列表上任意位置下拉都能刷新；有内容可滚时内层先消费，剩下的一层再往上抛，
+ * 也不会和列表滚动打架。
+ */
+@Composable
+fun Modifier.pullRefreshArea(): Modifier {
+    // consumeScrollDelta 恒定返回 0：这条滚动链一点都不吃位移，只负责往上抛。
+    // 不能用 rememberScrollState()——它最大滚动值是无穷大，会把位移全吞掉自己「滚」进虚空。
+    val passThrough = rememberScrollableState { 0f }
+    return scrollable(state = passThrough, orientation = Orientation.Vertical)
 }

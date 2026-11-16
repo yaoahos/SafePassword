@@ -5,13 +5,13 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
@@ -26,10 +26,40 @@ private val LightBackground = Color(0xFFF4F4F6)
 internal val DarkBackground = Color(0xFF0C0C0E)
 private val DarkSurface = Color(0xFF18181B)
 
+/**
+ * 动态取色此刻的实际结果，供主题页决定「预置配色该不该显示为选中」。
+ *
+ * 关键是 [FALLBACK]：开关是打开的，但壁纸色取不到（ROM 只给黑色 / 动态壁纸没实现
+ * 取色 / IPC 异常），界面实际用的是自选配色。这时如果预置色块全都不选中，用户会
+ * 以为「配色丢了」——把正在生效的那一块标出来才对得上眼睛看到的东西。
+ */
+enum class DynamicAccentState {
+    /** 首帧还没读完壁纸色，先不做任何标记，避免闪一下再跳。 */
+    PENDING,
+
+    /** 真的在跟随壁纸，预置色块全部不选中。 */
+    FOLLOWING,
+
+    /** 取不到壁纸色，已回落自选配色；预置色块按 accent 选中。 */
+    FALLBACK
+}
+
+val LocalDynamicAccentState = staticCompositionLocalOf { DynamicAccentState.FALLBACK }
+
+/** 壁纸色的三种状态：读到了 / 读不到 / 还没读完。 */
+private sealed interface SeedState {
+    data object Pending : SeedState
+    data object Unusable : SeedState
+    data class Ready(val color: Color) : SeedState
+}
+
+private fun seedStateOf(seed: Color?): SeedState =
+    if (seed == null) SeedState.Unusable else SeedState.Ready(seed)
+
 @Composable
 fun SafePasswordTheme(
     themeColor: Color = DefaultBrand,
-    /** 跟随桌面壁纸：主色取系统从壁纸提取的结果，忽略 [themeColor]。 */
+    /** 跟随桌面壁纸：主色取系统从壁纸提取的结果；取不到时回落到 [themeColor]。 */
     dynamic: Boolean = false,
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
@@ -41,18 +71,23 @@ fun SafePasswordTheme(
     val refreshScope = rememberCoroutineScope()
     // 订阅壁纸色变化：前台换壁纸（分屏 / 悬浮窗）也能立刻更新，不用等 Activity resume。
     // key 里带 dynamicSupported，拨开关那一帧就重新取初值，不会拿着关闭时的 null。
-    val wallpaperSeed by produceState<Color?>(null, context, dynamicSupported) {
+    // 三态而非单纯 Color?：要区分「还没读完」和「确实读不到」，主题页才能给出正确提示。
+    @Suppress("ProduceStateDoesNotAssignValue")
+    val seedState by produceState<SeedState>(SeedState.Pending, context, dynamicSupported) {
         if (!dynamicSupported) {
-            value = null
+            value = SeedState.Unusable
             return@produceState
         }
         // getWallpaperColors 走 IPC，AOSP 不建议在 UI 线程调用，首帧读取放 IO。
-        value = withContext(Dispatchers.IO) { wallpaperSeedColor(context) }
+        value = seedStateOf(withContext(Dispatchers.IO) { wallpaperSeedColor(context) })
         withContext(Dispatchers.IO) { WallpaperColorBus.refresh(context) }
         WallpaperColorBus.seed.collect { latest ->
-            // 读不到时保留上一次的值：换壁纸瞬间系统可能还没算完色，
-            // 那一下若切回系统整套配色，界面会闪一次紫底。
-            if (latest != null) value = latest
+            // 回调带来的颜色不可用时再直读一次：部分 ROM 的 OnColorsChangedListener
+            // 触发瞬间 getWallpaperColors 缓存还没刷新，直接判 Unusable 会误回落。
+            // 直读也拿不到才算真的取不到色。
+            value = seedStateOf(
+                latest ?: withContext(Dispatchers.IO) { wallpaperSeedColor(context) }
+            )
         }
     }
     // 部分 ROM 不发 OnColorsChanged 回调，回前台再兜底重读一次。
@@ -62,26 +97,32 @@ fun SafePasswordTheme(
             onPauseOrDispose { }
         }
     }
-    // 优先用系统对壁纸的取色结果自己算主色（只算 primary，surface 层继续用本文件里的
-    // 中性色）；拿不到才交给系统整套方案。理由见 WallpaperSeed.kt 的注释：
-    // 系统 accent overlay 在部分 ROM 上不跟壁纸更新，且整套方案会把弹窗/菜单的底色
-    // 换回带紫调的基线值。
-    val seed = if (dynamicSupported) wallpaperSeed else null
+    // 只拿到可用的壁纸色才跟随壁纸；读不到时（部分 ROM 的 WallpaperColors 只给黑色，
+    // 系统 overlay 也跟着派生出一片灰蓝）老老实实用自选配色。
+    // 之前这里回落到 dynamicLight/DarkColorScheme，结果整屏是「来路不明的灰」——
+    // 深蓝壁纸配灰界面，比不跟随更糟，已移除这条退路。
+    val effectiveSeed = (seedState as? SeedState.Ready)?.color
     val scheme = when {
-        seed != null -> {
-            val primary = seedToPrimary(seed, darkTheme)
+        effectiveSeed != null -> {
+            val primary = seedToPrimary(effectiveSeed, darkTheme)
             if (darkTheme) darkScheme(primary) else lightScheme(primary)
         }
-        dynamicSupported ->
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         darkTheme -> darkScheme(themeColor)
         else -> lightScheme(themeColor)
     }
-    MaterialTheme(
-        colorScheme = scheme,
-        typography = Typography(),
-        content = content
-    )
+    // 主题页据此标记预置配色：跟随壁纸时不选，回落自选色时选中正在用的那一块。
+    val dynamicAccentState = when {
+        seedState is SeedState.Ready -> DynamicAccentState.FOLLOWING
+        seedState is SeedState.Pending -> DynamicAccentState.PENDING
+        else -> DynamicAccentState.FALLBACK
+    }
+    CompositionLocalProvider(LocalDynamicAccentState provides dynamicAccentState) {
+        MaterialTheme(
+            colorScheme = scheme,
+            typography = Typography(),
+            content = content
+        )
+    }
 }
 
 private fun lightScheme(primary: Color): ColorScheme {

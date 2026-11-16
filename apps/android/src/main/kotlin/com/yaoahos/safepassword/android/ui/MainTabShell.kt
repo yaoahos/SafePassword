@@ -194,6 +194,7 @@ fun MainTabShell(
                                     state = state,
                                     selectionMode = selectionMode,
                                     selectedIds = selectedIds,
+                                    drawerOpen = drawerState.isOpen,
                                     onToggleSelection = { id ->
                                         selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
                                         if (selectedIds.isEmpty()) selectionMode = false

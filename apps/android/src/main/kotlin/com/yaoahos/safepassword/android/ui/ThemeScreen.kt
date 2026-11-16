@@ -56,6 +56,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
+import com.yaoahos.safepassword.android.ui.theme.DynamicAccentState
+import com.yaoahos.safepassword.android.ui.theme.LocalDynamicAccentState
 
 private val themePresets = listOf(
     0xFF1677FFL, 0xFFFF9500L, 0xFFEF4444L, 0xFFE11D48L, 0xFFDB2777L, 0xFFA855F7L,
@@ -78,8 +80,12 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
     // 12 以下没有系统取色接口：入口置灰并写明原因，不给一个点不动的开关
     val dynamicSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val dynamicNow = settings.dynamicColor && dynamicSupported
-    // 当前真正生效的主色：动态取色开着时就是由壁纸色派生的那个
-    val effective = if (dynamicNow) MaterialTheme.colorScheme.primary else Color(settings.themeColor)
+    // 只有「真的在跟随壁纸」才算动态生效。开着开关却取不到壁纸色时（FALLBACK），
+    // 界面实际用的是自选配色，预置色块要照常高亮正在用的那一块，否则看起来像配色丢了。
+    val followingWallpaper = dynamicNow &&
+        LocalDynamicAccentState.current == DynamicAccentState.FOLLOWING
+    // 当前真正生效的主色：跟随壁纸时是壁纸派生色，否则就是自选色。
+    val effective = if (followingWallpaper) MaterialTheme.colorScheme.primary else Color(settings.themeColor)
     val effectiveHex = hexOf(effective)
 
     // 主题色一变（选预设、开/关动态取色）输入框就显示「现在生效的颜色」；
@@ -216,8 +222,9 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 gridItems(themePresets) { value ->
-                    // 动态取色开着时不高亮任何预设——当前颜色并不来自这里
-                    val selected = !dynamicNow && value == settings.themeColor
+                    // 只有「真的在跟随壁纸」时才不高亮任何预设——当前颜色并不来自这里。
+                    // 开着动态取色却取不到壁纸色时界面用的是自选色，必须把正在用的那块标出来。
+                    val selected = !followingWallpaper && value == settings.themeColor
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         Box(
                             modifier = Modifier
@@ -250,8 +257,11 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
                 }
             }
             Text(
-                if (dynamicNow) "动态取色已开启，选择任意颜色会自动关闭动态取色。"
-                else "点选即时生效。",
+                when {
+                    followingWallpaper -> "动态取色已开启，选择任意颜色会自动关闭动态取色。"
+                    dynamicNow -> "当前壁纸取不到可用的颜色，正在沿用选中的配色。"
+                    else -> "点选即时生效。"
+                },
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 16.sp,
@@ -325,8 +335,11 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
                 )
             }
             Text(
-                if (dynamicNow) "色块默认显示壁纸提取的主色；输入色值可即时预览，点「应用」后生效并关闭动态取色。"
-                else "输入色值即时预览，点「应用」后生效。支持 #RRGGBB 与 RRGGBB。",
+                when {
+                    followingWallpaper -> "色块默认显示壁纸提取的主色；输入色值可即时预览，点「应用」后生效并关闭动态取色。"
+                    dynamicNow -> "当前壁纸取不到可用的颜色，正沿用选中的配色；输入色值可即时预览，点「应用」后生效。"
+                    else -> "输入色值即时预览，点「应用」后生效。支持 #RRGGBB 与 RRGGBB。"
+                },
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 16.sp,
