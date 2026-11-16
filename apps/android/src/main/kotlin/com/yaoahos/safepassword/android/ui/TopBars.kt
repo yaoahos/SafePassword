@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Menu
-import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,7 +33,6 @@ import androidx.compose.ui.unit.sp
 fun SafeCompactTopBar(
     title: String,
     onMenu: () -> Unit,
-    onSync: (() -> Unit)? = null,
     onLock: (() -> Unit)? = null
 ) {
     Column(
@@ -67,28 +65,17 @@ fun SafeCompactTopBar(
                 fontSize = 17.sp,
                 modifier = Modifier.align(Alignment.Center)
             )
-            if (onSync != null || onLock != null) {
+            if (onLock != null) {
                 Row(
                     modifier = Modifier.align(Alignment.CenterEnd),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (onSync != null) {
-                        IconButton(onClick = onSync, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                Icons.Outlined.Sync,
-                                contentDescription = "立即同步",
-                                modifier = Modifier.size(21.dp)
-                            )
-                        }
-                    }
-                    if (onLock != null) {
-                        IconButton(onClick = onLock, modifier = Modifier.size(40.dp)) {
-                            Icon(
-                                Icons.Outlined.Lock,
-                                contentDescription = "锁定密码库",
-                                modifier = Modifier.size(21.dp)
-                            )
-                        }
+                    IconButton(onClick = onLock, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            Icons.Outlined.Lock,
+                            contentDescription = "锁定密码库",
+                            modifier = Modifier.size(21.dp)
+                        )
                     }
                 }
             }

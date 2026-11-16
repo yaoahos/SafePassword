@@ -39,6 +39,8 @@ data class AppUiState(
     val webDav: WebDavConfig = WebDavConfig(),
     val syncStatus: String = "",
     val syncStatusAt: Long = 0L,
+    /** 首页下拉刷新的转圈状态；只由手动同步驱动，自动同步不显示指示器。 */
+    val pullRefreshing: Boolean = false,
     /**
      * 这条同步状态属于哪个页面（false = 首页，true = WebDAV 页）。
      *

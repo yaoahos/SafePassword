@@ -163,7 +163,6 @@ fun MainTabShell(
                 SafeCompactTopBar(
                     title = if (tab == Screen.Tools) "工具" else stringResource(R.string.app_name),
                     onMenu = { scope.launch { drawerState.open() } },
-                    onSync = viewModel::syncNow,
                     onLock = viewModel::lock
                 )
             }
@@ -186,21 +185,26 @@ fun MainTabShell(
                     screenStateHolder.SaveableStateProvider(target.toString()) {
                         when (target) {
                             Screen.Tools -> ToolsContent(viewModel, state)
-                            else -> VaultContent(
-                                viewModel = viewModel,
-                                state = state,
-                                selectionMode = selectionMode,
-                                selectedIds = selectedIds,
-                                onToggleSelection = { id ->
-                                    selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
-                                    if (selectedIds.isEmpty()) selectionMode = false
-                                },
-                                onEnterSelection = { id ->
-                                    selectionMode = true
-                                    selectedIds = setOf(id)
-                                },
-                                onClearSelection = clearSelection
-                            )
+                            else -> AppPullToRefreshBox(
+                                isRefreshing = state.pullRefreshing,
+                                onRefresh = viewModel::syncNow
+                            ) {
+                                VaultContent(
+                                    viewModel = viewModel,
+                                    state = state,
+                                    selectionMode = selectionMode,
+                                    selectedIds = selectedIds,
+                                    onToggleSelection = { id ->
+                                        selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
+                                        if (selectedIds.isEmpty()) selectionMode = false
+                                    },
+                                    onEnterSelection = { id ->
+                                        selectionMode = true
+                                        selectedIds = setOf(id)
+                                    },
+                                    onClearSelection = clearSelection
+                                )
+                            }
                         }
                     }
                 }

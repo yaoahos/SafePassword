@@ -1196,12 +1196,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun syncNow() {
-        // 自动同步正在跑时不静默吞掉这次点击：给个状态，别让按钮看着没反应。
+        // 自动同步正在跑时不静默吞掉这次下拉：给个状态，别让指示器看着没反应。
         if (syncMutex.isLocked) {
             _state.update { it.copy(syncStatus = "正在同步中…", syncStatusAt = now()) }
             return
         }
-        viewModelScope.launch(Dispatchers.IO) { doSync(silent = false) }
+        // 下拉指示器的转圈状态只由这次手动同步驱动；异常/冲突/锁竞争都由 finally 收圈。
+        _state.update { it.copy(pullRefreshing = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                doSync(silent = false)
+            } finally {
+                _state.update { it.copy(pullRefreshing = false) }
+            }
+        }
     }
 
     /** Explicitly replace the local vault with the cloud copy, ignoring timestamps. */

@@ -1,6 +1,5 @@
 package com.yaoahos.safepassword.android.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -11,14 +10,16 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val DefaultBrand = Color(0xFF1677FF)
 private val LightBackground = Color(0xFFF4F4F6)
@@ -34,18 +35,30 @@ fun SafePasswordTheme(
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    // 系统取色是 Android 12 起才有的能力；低版本自动落回自选色，不报错也不把界面画成灰，
-    // 主题页会直接写明「需要 Android 12 及以上」，不让用户对着一个点不动的开关猜。
-    val dynamicSupported = dynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    // 壁纸颜色会随换壁纸变化，回到前台重读一次，避免用户换完壁纸看不到更新。
-    // 读不到时保留上一次的种子，不写成 null：换壁纸的瞬间系统可能还没算完色，
-    // 那一下若把方案切回系统整套配色，界面会闪一次紫底。
-    var wallpaperSeed by remember(context, dynamicSupported) {
-        mutableStateOf(if (dynamicSupported) wallpaperSeedColor(context) else null)
+    // 门槛与壁纸监听共用 WallpaperSeed.kt 的 MIN_WALLPAPER_SDK，别再各写一份。
+    // 低版本自动落回自选色，不报错也不把界面画成灰。
+    val dynamicSupported = dynamic && wallpaperColorSupported()
+    val refreshScope = rememberCoroutineScope()
+    // 订阅壁纸色变化：前台换壁纸（分屏 / 悬浮窗）也能立刻更新，不用等 Activity resume。
+    // key 里带 dynamicSupported，拨开关那一帧就重新取初值，不会拿着关闭时的 null。
+    val wallpaperSeed by produceState<Color?>(null, context, dynamicSupported) {
+        if (!dynamicSupported) {
+            value = null
+            return@produceState
+        }
+        // getWallpaperColors 走 IPC，AOSP 不建议在 UI 线程调用，首帧读取放 IO。
+        value = withContext(Dispatchers.IO) { wallpaperSeedColor(context) }
+        withContext(Dispatchers.IO) { WallpaperColorBus.refresh(context) }
+        WallpaperColorBus.seed.collect { latest ->
+            // 读不到时保留上一次的值：换壁纸瞬间系统可能还没算完色，
+            // 那一下若切回系统整套配色，界面会闪一次紫底。
+            if (latest != null) value = latest
+        }
     }
+    // 部分 ROM 不发 OnColorsChanged 回调，回前台再兜底重读一次。
     if (dynamicSupported) {
         LifecycleResumeEffect(Unit) {
-            wallpaperSeedColor(context)?.let { wallpaperSeed = it }
+            refreshScope.launch(Dispatchers.IO) { WallpaperColorBus.refresh(context) }
             onPauseOrDispose { }
         }
     }

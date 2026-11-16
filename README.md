@@ -4,12 +4,12 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 - 项目名：`SafePassword`
 - 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.1.4`（versionCode 19）
+- 正式版本：`1.1.5`（versionCode 20）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`SafePassword-1.1.4-release.apk`
-- APK 大小：3,076,541 字节
-- SHA-256：`f34b6644318033f87fa2503fec18f2df60f7068ce6a72fd36e3b39078d9226bf`
+- 正式 APK：`SafePassword-1.1.5-release.apk`
+- APK 大小：3,092,197 字节
+- SHA-256：`b18aa52bfc20e9827436a31e371b4da90db124a48c8efbc0a57fe60069e72dec`
 - 发布下载：[Releases](https://github.com/yaoahos/SafePassword/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
@@ -223,21 +223,21 @@ apps/android/build/outputs/apk/release/android-release.apk
 分发前按版本号重命名：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk SafePassword-1.1.4-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk SafePassword-1.1.5-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose SafePassword-1.1.4-release.apk
-aapt.exe dump badging SafePassword-1.1.4-release.apk
+apksigner.bat verify --verbose SafePassword-1.1.5-release.apk
+aapt.exe dump badging SafePassword-1.1.5-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.yaoahos.safepassword`
-- `versionCode: 19`
-- `versionName: 1.1.4`
+- `versionCode: 20`
+- `versionName: 1.1.5`
 - `application-label: SafePassword`
 - APK Signature Scheme v2：通过
 - 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`、`CAMERA`（仅扫码录入动态验证码时使用，可拒绝并从相册选图）
@@ -353,6 +353,13 @@ Gradle 模块路径：
 
 ## 十、版本记录
 
+**2026/11/16 · 1.1.5**
+- 变更 关于页顶部改用应用图标，点击图标或标题均可跳转项目仓库
+- 变更 首页取消顶栏「立即同步」按钮，改为下拉释放触发同步
+- 修复 部分系统壁纸只给出无效的 primary 色导致动态取色发灰，改从三个候选色里挑可用值
+- 修复 动态取色在 Android 12/13 上不生效（原门槛误设为 14）
+- 优化 换壁纸后主色实时更新，不再需要回到应用才刷新
+
 **2026/11/15 · 1.1.4**
 - 修复 冷启动时把清理过期删除记录当成本地改动，每次启动都整库重传
 - 修复 冷启动必判「云端有更新」，每次启动都下载一整包
@@ -376,25 +383,5 @@ Gradle 模块路径：
 - 变更 删除密码库只删除本机文件，云端副本保留，误删可随时从云端重新下载
 - 新增 云端密码库列表显示已下载到本机的库，可就地删除云端那一份（不影响本机）
 - 修复 解锁界面无法使用系统返回退出应用，返回键与左缘右滑手势均无响应
-
-**2026/11/13 · 1.1.0**
-- 新增 动态验证码字段：保存 otpauth:// 链接或 Base32 密钥，详情页实时生成 6 位动态码并一键复制；支持相机扫码录入，也能从相册选二维码截图识别
-- 新增 文件字段：可保存单个 50KB 以内的小文件，随密码库加密与同步，支持导出到本地
-- 新增 从屏幕左边缘右滑返回上一页，页面切换加入水平推入转场
-- 新增 字段名留空时按类型自动命名；标签分类下新建条目默认带上该标签
-- 新增 WebDAV 服务器地址留空保存时自动填入坚果云地址；同步页密码框支持显示/隐藏
-- 新增 明文导出（JSON/CSV/XML）前风险确认；下载更新包后校验包名与签名
-- 变更 锁定后停在应用内的解锁界面；解锁后回到锁定时的界面（含搜索词与标签筛选）
-- 变更 应用内提示统一为顶部圆角卡片（成功/错误/警告/信息四态）
-- 变更 自定义图标一律居中裁成正方形 192px，编码 PNG / WebP 择优，照片类图标库体积降约 80%
-- 变更 移除「多行文本」字段类型（已有条目仍可显示与编辑），动态验证码移到类型列表最后
-- 变更 应用签名密钥已重新生成，旧版本无法覆盖安装，需卸载重装（重装前请先备份密码库）
-- 修复 自动锁定不生效：改为两段计时（后台停留 + 前台闲置），应用一直开着超过设定时间也会锁定，「切到后台立即锁定」即时生效
-- 修复 输入框被输入法遮挡、对话框按钮被挤出屏幕显示不全
-- 修复 冷启动先闪一下深色背景；在桌面点图标偶尔闪一下退回桌面
-- 修复 小米换机等场景后无法保存 WebDAV 密码
-- 修复 指纹传感器异常时无法关闭指纹解锁
-- 修复 切换底部标签时顶栏与底栏抖动
-- 修复 导入外部卡片时非正方形图标被拉伸变形
 
 更早的版本与完整日志见 [Releases](https://github.com/yaoahos/SafePassword/releases)。

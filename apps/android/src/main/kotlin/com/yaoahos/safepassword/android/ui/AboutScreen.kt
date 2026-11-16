@@ -1,5 +1,6 @@
 package com.yaoahos.safepassword.android.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,7 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,10 +31,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.yaoahos.safepassword.android.BuildConfig
+import com.yaoahos.safepassword.android.R
 
 /** 项目开源地址：点击"关于"页中间的标题即可跳转。 */
 private const val PROJECT_URL = "https://github.com/yaoahos/SafePassword"
@@ -43,6 +45,9 @@ private const val PROJECT_URL = "https://github.com/yaoahos/SafePassword"
 @Composable
 fun AboutScreen(viewModel: AppViewModel, state: AppUiState) {
     val uriHandler = LocalUriHandler.current
+    val openRepo: () -> Unit = {
+        runCatching { uriHandler.openUri(PROJECT_URL) }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -65,19 +70,20 @@ fun AboutScreen(viewModel: AppViewModel, state: AppUiState) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(
-                Icons.Outlined.Lock,
-                contentDescription = null,
-                modifier = Modifier.height(72.dp),
-                tint = MaterialTheme.colorScheme.primary
+            Image(
+                painter = painterResource(R.mipmap.ic_launcher),
+                contentDescription = "SafePassword 开源仓库",
+                modifier = Modifier
+                    .size(78.dp)
+                    .clickable(onClick = openRepo)
             )
             Text(
                 "SafePassword",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.clickable {
-                    runCatching { uriHandler.openUri(PROJECT_URL) }
-                }
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .clickable(onClick = openRepo)
             )
             Text(
                 "版本 ${BuildConfig.VERSION_NAME}",
