@@ -59,6 +59,11 @@ import java.util.Locale
 import com.yaoahos.safepassword.android.ui.theme.DynamicAccentState
 import com.yaoahos.safepassword.android.ui.theme.LocalDynamicAccentState
 
+/** 主题页底部按色值来源显示不同的回退提示，避免两处文案写歪。 */
+private enum class ThemeFallbackHint {
+    NONE, PRESET, CUSTOM
+}
+
 private val themePresets = listOf(
     0xFF1677FFL, 0xFFFF9500L, 0xFFEF4444L, 0xFFE11D48L, 0xFFDB2777L, 0xFFA855F7L,
     0xFF6366F1L, 0xFF2563EBL, 0xFF0891B2L, 0xFF0D9488L, 0xFF16A34AL,
@@ -87,6 +92,14 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
     // 当前真正生效的主色：跟随壁纸时是壁纸派生色，否则就是自选色。
     val effective = if (followingWallpaper) MaterialTheme.colorScheme.primary else Color(settings.themeColor)
     val effectiveHex = hexOf(effective)
+    // 动态取色开着却取不到壁纸色时，提示要跟着「实际生效的是哪一块选中色」走：
+    // 命中预置就显示在预置区下方，否则显示在自定义区下方，不再固定堆在页面末尾。
+    val fallbackHint = when {
+        !dynamicNow || LocalDynamicAccentState.current != DynamicAccentState.FALLBACK ->
+            ThemeFallbackHint.NONE
+        themePresets.any { it == settings.themeColor } -> ThemeFallbackHint.PRESET
+        else -> ThemeFallbackHint.CUSTOM
+    }
 
     // 主题色一变（选预设、开/关动态取色）输入框就显示「现在生效的颜色」；
     // 用户自己输入时不改它，否则打字到一半会被格式化打断。
@@ -259,7 +272,8 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
             Text(
                 when {
                     followingWallpaper -> "动态取色已开启，选择任意颜色会自动关闭动态取色。"
-                    dynamicNow -> "当前壁纸取不到可用的颜色，正在沿用选中的配色。"
+                    fallbackHint == ThemeFallbackHint.PRESET ->
+                        "当前壁纸取不到可用的颜色，正在沿用上方选中的预置颜色。"
                     else -> "点选即时生效。"
                 },
                 fontSize = 12.sp,
@@ -337,7 +351,8 @@ fun ThemeScreen(viewModel: AppViewModel, state: AppUiState) {
             Text(
                 when {
                     followingWallpaper -> "色块默认显示壁纸提取的主色；输入色值可即时预览，点「应用」后生效并关闭动态取色。"
-                    dynamicNow -> "当前壁纸取不到可用的颜色，正沿用选中的配色；输入色值可即时预览，点「应用」后生效。"
+                    fallbackHint == ThemeFallbackHint.CUSTOM ->
+                        "当前壁纸取不到可用的颜色，正在沿用自定义颜色；输入色值可即时预览，点「应用」后生效。"
                     else -> "输入色值即时预览，点「应用」后生效。支持 #RRGGBB 与 RRGGBB。"
                 },
                 fontSize = 12.sp,
