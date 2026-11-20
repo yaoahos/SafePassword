@@ -1,16 +1,16 @@
-# SafePassword
+# MySafePass
 
-SafePassword 是一个离线优先的密码管理器。当前提供 Android 客户端，使用 Kotlin + Jetpack Compose 实现；共享核心为纯 Kotlin/JVM。数据默认只保存在本机，通过主密码派生密钥后加密存储；需要多设备同步时，可选用任意兼容 WebDAV 的网盘。
+MySafePass 是一个离线优先的密码管理器。当前提供 Android 客户端，使用 Kotlin + Jetpack Compose 实现；共享核心为纯 Kotlin/JVM。数据默认只保存在本机，通过主密码派生密钥后加密存储；需要多设备同步时，可选用任意兼容 WebDAV 的网盘。
 
-- 项目名：`SafePassword`
-- 包名：`com.yaoahos.safepassword`
-- 正式版本：`1.1.5`（versionCode 20）
+- 项目名：`MySafePass`
+- 包名：`com.yaoahos.mysafepass`
+- 正式版本：`1.1.6`（versionCode 21）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`SafePassword-1.1.5-release.apk`
-- APK 大小：3,092,173 字节
-- SHA-256：`f2d7501092ec778df38391b516fa77b71fe463ac65c47756dcae16af7bf4cb4b`
-- 发布下载：[Releases](https://github.com/yaoahos/SafePassword/releases)
+- 正式 APK：`MySafePass-1.1.6-release.apk`
+- APK 大小：3,092,369 字节
+- SHA-256：`8860be99f91fa9da54a0b34e3c9aac6c3a85bfa7b7d811032b5f83dd8c8d45eb`
+- 发布下载：[Releases](https://github.com/yaoahos/MySafePass/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
 
@@ -20,7 +20,7 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 | 解锁 | 侧边导航 | 密码库 |
 | :---: | :---: | :---: |
-| ![解锁](docs/screenshots/01-unlock.png) | ![侧边导航](docs/screenshots/02-drawer.png) | ![密码库](docs/screenshots/03-vault-empty.png) |
+| ![解锁](docs/screenshots/01-unlock.png) | ![侧边导航](docs/screenshots/02-drawer.png) | ![密码库](docs/screenshots/03-vault.png) |
 
 | 工具 | 设置 | 安全中心 |
 | :---: | :---: | :---: |
@@ -30,7 +30,7 @@ SafePassword 是一个离线优先的密码管理器。当前提供 Android 客�
 
 ## 一、软件介绍
 
-SafePassword 面向希望把密码数据掌握在自己手里的用户。它不依赖厂商云，不要求注册账号，也不包含密码填充、共享协作或广告分析。密码库文件在离开设备前已经完成加密，WebDAV 只负责传输密文。
+MySafePass 面向希望把密码数据掌握在自己手里的用户。它不依赖厂商云，不要求注册账号，也不包含密码填充、共享协作或广告分析。密码库文件在离开设备前已经完成加密，WebDAV 只负责传输密文。
 
 设计目标：
 
@@ -177,26 +177,27 @@ apps/android/build/outputs/apk/debug/android-debug.apk
 
 ### 4. 正式构建
 
-正式构建需要自己的 release keystore，放在项目根目录：
+正式构建需要自己的 release keystore，集中放在项目 `signing/` 目录（该目录已被 `.gitignore` 忽略，绝不入库）：
 
 ```text
-release.keystore
-keystore.properties
+signing/release.keystore
+signing/keystore.properties
+signing/debug.keystore      # 调试包签名，标准 androiddebugkey / 口令 android
 ```
 
-`keystore.properties` 示例：
+`signing/keystore.properties` 示例（`storeFile` 按相对 `signing/` 目录解析，也可写绝对路径）：
 
 ```properties
 storeFile=release.keystore
 storePassword=你的_store_password
-keyAlias=safepassword
+keyAlias=mysafepass
 keyPassword=你的_key_password
 ```
 
 生成新的 keystore：
 
 ```bat
-keytool -genkeypair -v -keystore release.keystore -alias safepassword -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkeypair -v -keystore signing/release.keystore -alias mysafepass -keyalg RSA -keysize 2048 -validity 10000
 ```
 
 构建：
@@ -223,22 +224,22 @@ apps/android/build/outputs/apk/release/android-release.apk
 分发前按版本号重命名：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk SafePassword-1.1.5-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk MySafePass-1.1.6-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose SafePassword-1.1.5-release.apk
-aapt.exe dump badging SafePassword-1.1.5-release.apk
+apksigner.bat verify --verbose MySafePass-1.1.6-release.apk
+aapt.exe dump badging MySafePass-1.1.6-release.apk
 ```
 
 当前正式包的校验结果：
 
-- `package: com.yaoahos.safepassword`
-- `versionCode: 20`
-- `versionName: 1.1.5`
-- `application-label: SafePassword`
+- `package: com.yaoahos.mysafepass`
+- `versionCode: 21`
+- `versionName: 1.1.6`
+- `application-label: MySafePass`
 - APK Signature Scheme v2：通过
 - 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`、`CAMERA`（仅扫码录入动态验证码时使用，可拒绝并从相册选图）
 
@@ -265,7 +266,7 @@ aapt.exe dump badging SafePassword-1.1.5-release.apk
 - 标签：侧边栏 → 标签管理，新建时可设名称、颜色和排序值（排序值越小越靠前），长按可批量删除。
 - 搜索：顶部搜索框输入标题、账号或网址；设置中可开启「搜索密码」；搜索框聚焦后侧滑或返回会先清空搜索而不退出页面。
 - 主题：工具 → 主题，预置色为圆形色块，也支持输入 `#RRGGBB` 自定义，可切换深色模式。
-- 同步：工具 → WebDAV 同步，填写服务器地址、用户名、密码和远程目录后先「测试连接」再「保存并立即同步」；多设备用同一远程目录即可共享同一批密码库文件，每个密码库各自一个文件，由 `SafePassword-index.json` 记录清单。
+- 同步：工具 → WebDAV 同步，填写服务器地址、用户名、密码和远程目录后先「测试连接」再「保存并立即同步」；多设备用同一远程目录即可共享同一批密码库文件，每个密码库各自一个文件，由 `MySafePass-index.json` 记录清单。
 - 备份：设置 → 本地备份，先选择保存目录（系统文件选择器，可放 SD 卡或网盘同步目录），再创建加密备份或设置自动备份间隔；恢复时需输入该备份的主密码。
 - 导入导出：工具 → 导入密码支持多选 CSV、JSON 与 XML；设置 → 数据可导出 CSV、JSON、XML。
 - TOTP 认证器：新建/编辑字段时选「动态验证码」类型，字段右侧 ⋮ 菜单里的「扫码录入密钥」可直接对着网站给出的二维码扫，也能从相册选一张二维码截图识别；也可以手动粘贴 `otpauth://` 链接或 Base32 密钥（密钥文件码）。详情页实时显示 6 位动态码与剩余秒数，复制按钮复制的是当前动态码，眼睛按钮可查看密钥原文。
@@ -279,17 +280,17 @@ aapt.exe dump badging SafePassword-1.1.5-release.apk
 项目采用"平台应用 + 共享核心"的结构。`core` 是纯 Kotlin/JVM 共享核心，Android 应用层直接复用它的加密、模型、导入导出和 WebDAV 能力，UI 与平台粘合层在 `apps/android` 内实现。
 
 ```text
-SafePassword/
+MySafePass/
 ├── apps/
 │   └── android/                Android 应用层（Compose UI、Activity、文件选择器）
-│       ├── src/main/kotlin/com/yaoahos/safepassword/android/
+│       ├── src/main/kotlin/com/yaoahos/mysafepass/android/
 │       │   ├── ui/             页面、组件、主题、导航
 │       │   ├── data/           设置、备份、同步调度
 │       │   ├── security/       生物识别
 │       │   └── MainActivity.kt
 │       └── src/main/res/       图标、字符串、主题资源
 ├── core/                       纯 Kotlin/JVM 共享核心
-│   └── src/main/kotlin/com/yaoahos/safepassword/core/
+│   └── src/main/kotlin/com/yaoahos/mysafepass/core/
 │       ├── crypto/             AES-GCM、PBKDF2、密钥包裹
 │       ├── model/              密码库、条目、标签、字段、模板
 │       ├── storage/            密码库容器、本地存储
@@ -310,9 +311,9 @@ Gradle 模块路径：
 
 包名说明：
 
-- Android `applicationId`：`com.yaoahos.safepassword`
-- Android 命名空间：`com.yaoahos.safepassword.android`
-- 核心库包名：`com.yaoahos.safepassword.core`
+- Android `applicationId`：`com.yaoahos.mysafepass`
+- Android 命名空间：`com.yaoahos.mysafepass.android`
+- 核心库包名：`com.yaoahos.mysafepass.core`
 
 ---
 
@@ -353,6 +354,12 @@ Gradle 模块路径：
 
 ## 十、版本记录
 
+**2026/11/20 · 1.1.6**
+- 变更：统一应用标识与云端文件命名
+- 变更：本版包名与旧版不同，可与旧版同时安装；两版数据互不共享，旧版密码库需先导出再在本版导入
+- 变更：请勿让新旧两版同时开启自动同步并连接同一 WebDAV 目录，避免互相同步同一批文件产生覆盖或冲突
+- 优化：提升跨版本数据兼容性
+
 **2026/11/16 · 1.1.5**
 - 变更：关于页使用应用图标，点击图标或标题跳转项目仓库
 - 变更：取消顶栏同步按钮，首页与收藏页改用下拉刷新触发同步
@@ -386,4 +393,4 @@ Gradle 模块路径：
 - 新增：云端密码库列表显示已下载到本机的库，可就地删除云端那一份（不影响本机）
 - 修复：解锁界面无法使用系统返回退出应用，返回键与左缘右滑手势均无响应
 
-更早的版本与完整日志见 [Releases](https://github.com/yaoahos/SafePassword/releases)。
+更早的版本与完整日志见 [Releases](https://github.com/yaoahos/MySafePass/releases)。

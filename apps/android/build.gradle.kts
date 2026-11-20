@@ -7,7 +7,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
-val keystorePropertiesFile = rootProject.file("keystore.properties")
+val signingDir = rootProject.file("signing")
+val keystorePropertiesFile = File(signingDir, "keystore.properties")
 val keystoreProperties = Properties().apply {
     if (keystorePropertiesFile.exists()) {
         keystorePropertiesFile.inputStream().use { load(it) }
@@ -15,15 +16,15 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
-    namespace = "com.yaoahos.safepassword.android"
+    namespace = "com.yaoahos.mysafepass.android"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.yaoahos.safepassword"
+        applicationId = "com.yaoahos.mysafepass"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.1.5"
+        versionCode = 21
+        versionName = "1.1.6"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -50,16 +51,17 @@ android {
     }
 
     signingConfigs {
-        // debug 统一用项目根目录的 debug.keystore（标准 androiddebugkey / 口令 android）。
+        // debug 统一用 signing/ 下的 debug.keystore（标准 androiddebugkey / 口令 android）。
         getByName("debug") {
-            storeFile = rootProject.file("debug.keystore")
+            storeFile = File(signingDir, "debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
         create("release") {
             if (keystorePropertiesFile.exists()) {
-                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                // storeFile 按相对 signing 目录解析。
+                storeFile = File(signingDir, keystoreProperties.getProperty("storeFile"))
                 storePassword = keystoreProperties.getProperty("storePassword")
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")

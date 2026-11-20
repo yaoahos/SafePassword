@@ -14,6 +14,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SafePassword"
+rootProject.name = "MySafePass"
 include(":core")
 include(":apps:android")

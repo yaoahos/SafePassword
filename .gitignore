@@ -1,17 +1,16 @@
 # ---------------------------------------------------------------------------
-# SafePassword - Git 忽略规则
+# MySafePass - Git 忽略规则
 # 目标：只提交源码与构建描述文件，排除构建产物、本机配置和签名材料。
 # ---------------------------------------------------------------------------
 
-# ---- 签名与密钥（绝不提交）----
+# ---- 签名与密钥（集中存放于 signing/，绝不提交）----
+signing/
 *.keystore
 *.jks
 keystore.properties
-keystore/*.properties
 
 # ---- 本机配置 ----
 local.properties
-local.properties.bak
 
 # ---- Gradle / Kotlin 构建产物 ----
 .gradle/
