@@ -4,12 +4,12 @@ MySafePass 是一个离线优先的密码管理器。当前提供 Android 客户
 
 - 项目名：`MySafePass`
 - 包名：`com.yaoahos.mysafepass`
-- 正式版本：`1.1.6`（versionCode 21）
+- 正式版本：`1.1.7`（versionCode 22）
 - 最低系统：Android 8.0（API 26）
 - 目标系统：Android 15（API 35）
-- 正式 APK：`MySafePass-1.1.6-release.apk`
-- APK 大小：3,092,369 字节
-- SHA-256：`8860be99f91fa9da54a0b34e3c9aac6c3a85bfa7b7d811032b5f83dd8c8d45eb`
+- 正式 APK：`MySafePass-1.1.7-release.apk`
+- APK 大小：3,092,429 字节
+- SHA-256：`fca324fd71ff708dca1e31070e1e59d7ee07bd82cf97f31134fc5f6f7cf97a83`
 - 发布下载：[Releases](https://github.com/yaoahos/MySafePass/releases)
 
 > 本项目为独立实现，未使用任何第三方应用的源代码；界面与交互仅作设计参考。
@@ -224,21 +224,21 @@ apps/android/build/outputs/apk/release/android-release.apk
 分发前按版本号重命名：
 
 ```bat
-copy apps\android\build\outputs\apk\release\android-release.apk MySafePass-1.1.6-release.apk
+copy apps\android\build\outputs\apk\release\android-release.apk MySafePass-1.1.7-release.apk
 ```
 
 ### 5. 校验 APK
 
 ```bat
-apksigner.bat verify --verbose MySafePass-1.1.6-release.apk
-aapt.exe dump badging MySafePass-1.1.6-release.apk
+apksigner.bat verify --verbose MySafePass-1.1.7-release.apk
+aapt.exe dump badging MySafePass-1.1.7-release.apk
 ```
 
 当前正式包的校验结果：
 
 - `package: com.yaoahos.mysafepass`
-- `versionCode: 21`
-- `versionName: 1.1.6`
+- `versionCode: 22`
+- `versionName: 1.1.7`
 - `application-label: MySafePass`
 - APK Signature Scheme v2：通过
 - 权限：`INTERNET`、`USE_BIOMETRIC`、`USE_FINGERPRINT`、`POST_NOTIFICATIONS`、`REQUEST_INSTALL_PACKAGES`、`CAMERA`（仅扫码录入动态验证码时使用，可拒绝并从相册选图）
@@ -353,6 +353,9 @@ Gradle 模块路径：
 ---
 
 ## 十、版本记录
+
+**2026/11/20 · 1.1.7**
+- 修复：发现新版本的提示中被当成发布信息过滤掉的「与旧版共存」说明，现在完整显示
 
 **2026/11/20 · 1.1.6**
 - 变更：统一应用标识与云端文件命名

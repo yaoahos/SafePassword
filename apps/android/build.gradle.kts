@@ -23,8 +23,8 @@ android {
         applicationId = "com.yaoahos.mysafepass"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "1.1.6"
+        versionCode = 22
+        versionName = "1.1.7"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -125,4 +125,6 @@ dependencies {
     implementation("androidx.camera:camera-view:1.4.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    testImplementation("junit:junit:4.13.2")
 }

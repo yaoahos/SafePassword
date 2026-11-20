@@ -154,7 +154,7 @@ fun ChangelogDialog(
 
 /**
  * 把 GitHub 发布说明压缩成「功能介绍 + 问题修复」条目：
- * 丢掉标题、日期、图片、表格，以及安装说明、包名、系统要求、校验值等发布信息。
+ * 丢掉标题、日期、图片、表格，以及安装说明、系统要求、校验值等发布信息。
  */
 internal fun conciseNotes(raw: String, limit: Int = 6): List<String> =
     raw.lineSequence()
@@ -189,7 +189,7 @@ internal fun conciseNotes(raw: String, limit: Int = 6): List<String> =
 
 /** 发布信息类关键词：这些内容不属于功能介绍或问题修复。 */
 private val NOISE_PATTERNS = listOf(
-    "包名", "versionCode", "versionName", "版本号", "系统要求", "适用系统", "适用版本",
+    "versionCode", "versionName", "版本号", "系统要求", "适用系统", "适用版本",
     "安装说明", "安装包", "下载地址", "文件大小", "SHA", "MD5", "签名", "校验值", "更新于"
 )
 
